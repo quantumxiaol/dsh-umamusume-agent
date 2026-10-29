@@ -1,0 +1,33 @@
+name: Release npm package
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - name: Check tag matches package version
+        run: node -e 'const version = require("./package.json").version; if (process.env.GITHUB_REF_NAME !== `v${version}`) throw new Error(`Tag ${process.env.GITHUB_REF_NAME} does not match package version ${version}`);'
+      - run: npm pack --pack-destination "$RUNNER_TEMP"
+      - name: Attach package to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$RUNNER_TEMP"/*.tgz --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "$RUNNER_TEMP"/*.tgz --generate-notes --verify-tag
+          fi
