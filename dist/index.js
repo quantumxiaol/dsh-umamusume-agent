@@ -12,7 +12,7 @@ import { registerDirectorProjection, configureDirector } from './director/servic
 import { DIRECTOR_KEY, DIRECTOR_PRESET_ID } from './director/state.js';
 import { PRESET_ID, STATE_KEY, CHARACTER_RECORD, TTS_TOGGLE_RECORD, State as stateSchema, PublicState as viewSchema, initialState, reduceState, } from './state.js';
 export default class UmamusumeService extends Service {
-    static inject = ['agentPresets', 'credentials', 'sessions', 'sessionProjections'];
+    static inject = ['agentPresets', 'credentials', 'sessions', 'sessionProjections', 'attachments'];
     static Config = ConfigSchema;
     settings;
     characters;

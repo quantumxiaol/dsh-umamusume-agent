@@ -32,7 +32,7 @@ declare module '@deepseek-ai/cordis' {
 }
 
 export default class UmamusumeService extends Service {
-  static inject = ['agentPresets', 'credentials', 'sessions', 'sessionProjections'];
+  static inject = ['agentPresets', 'credentials', 'sessions', 'sessionProjections', 'attachments'];
   static Config = ConfigSchema;
 
   readonly settings: Config;
