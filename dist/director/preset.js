@@ -4,6 +4,7 @@ import { directorPrompt } from './prompts.js';
 import { playScene } from './runtime.js';
 export const name = 'umamusume-director';
 export const inject = ['umamusume', 'systemPrompt', 'tools', 'attachments', 'sessions', 'sessionProjections', 'llm'];
+const PLAY_SCENE = 'umamusume_play_scene';
 export function apply(ctx) {
     ctx.systemPrompt.section({
         name: PERSONA_PREFIX_SECTION,
@@ -15,9 +16,20 @@ export function apply(ctx) {
         interpolate: false, complete: true,
     });
     ctx.systemPrompt.suppressRuntimeContext();
-    ctx.tools.restrict({ allow: [] });
+    ctx.tools.presentAs('native');
+    // Preset tools are inherited by the live Agent. An empty allow-list on
+    // the preset also hides its own tools when viewed from that child scope.
+    // Filter the model surface and guard execution without masking inheritance.
+    ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
+        const result = await next();
+        const tools = result.tools.filter(tool => tool.name === PLAY_SCENE);
+        if (tools.length !== 1)
+            throw new Error('剧情工具未能加载，请重新加载剧情播放插件后再试。');
+        return { ...result, tools };
+    });
+    ctx.tools.guard(exec => exec.name === PLAY_SCENE ? undefined : '剧情导演只能推进角色剧情。');
     ctx.tools.register(defineTool({
-        name: 'umamusume_play_scene',
+        name: PLAY_SCENE,
         description: '按导演计划推进一轮互动剧情：角色依次独立回复，后台按角色配音，并在合适时机绘制 CG。工具完成后直接等待玩家，不要再复述或追加角色台词。',
         parameters: {
             scene: {
