@@ -47,8 +47,8 @@ export function DirectorDock({ useProjection, useSession, execute }: PropsRuntim
   const activeCast = state.setup?.cast ?? [];
   const editingSetup = !state.setup || (editing && !state.started);
   const selectedNames = activeCast.map(id => state.catalog.find(row => row.id === id)?.name ?? id);
-  return <section aria-label="剧情播放" style={{ width: '100%', maxWidth: 900, margin: '0 auto 10px', boxSizing: 'border-box', border: '1px solid var(--dsw-alias-border-l2, #d9dde4)', borderRadius: 14, overflow: 'hidden', fontSize: 13 }}>
-    <header style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, padding: '10px 14px' }}>
+  return <section aria-label="剧情播放" style={{ width: '100%', maxWidth: 900, maxHeight: 'min(60vh, 560px)', minHeight: 0, display: 'flex', flexDirection: 'column', margin: '0 auto 10px', boxSizing: 'border-box', border: '1px solid var(--dsw-alias-border-l2, #d9dde4)', borderRadius: 14, overflow: 'hidden', fontSize: 13 }}>
+    <header style={{ display: 'flex', flexShrink: 0, alignItems: 'center', flexWrap: 'wrap', gap: 8, padding: '10px 14px' }}>
       <strong style={{ flex: 1 }}>剧情播放{state.setup ? ` · ${state.setup.title}` : ''}</strong>
       {state.setup && <>
         <button style={button} disabled={locked} aria-pressed={voice?.ttsEnabled} onClick={() => void run(`tts ${voice?.ttsEnabled ? 'off' : 'on'}`)}>配音 {voice?.ttsEnabled ? '开启' : '关闭'}</button>
@@ -57,7 +57,9 @@ export function DirectorDock({ useProjection, useSession, execute }: PropsRuntim
         <button style={button} aria-expanded={!collapsed} onClick={() => setCollapsed(value => !value)}>{collapsed ? '展开舞台' : '收起舞台'}</button>
       </>}
     </header>
+    <div role="region" aria-label="剧情内容" tabIndex={0} style={{ minHeight: 0, overflowY: 'auto', overscrollBehaviorY: 'contain' }}>
     {editingSetup && <form onSubmit={event => { event.preventDefault(); void run(`story setup ${JSON.stringify({ title, opening, outline, cast })}`); }} style={{ padding: '0 14px 14px', display: 'grid', gap: 10 }}>
+      <p style={{ margin: 0, opacity: 0.7 }}>向下滚动填写开场和大纲，保存后点击“开始剧情”。下方聊天框用于角色对话与行动。</p>
       <label>故事标题<input aria-label="故事标题" required maxLength={120} style={field} value={title} disabled={locked} onChange={event => setTitle(event.target.value)} /></label>
       <fieldset disabled={locked} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         <legend>出演角色 · {cast.length}/4</legend>
@@ -100,5 +102,6 @@ export function DirectorDock({ useProjection, useSession, execute }: PropsRuntim
     </>}
     {!!state.current.error && <div role="alert" style={{ padding: '0 14px 10px', color: '#bd4c45' }}>{state.current.error}</div>}
     {!!error && <div role="alert" style={{ padding: '0 14px 10px', color: '#bd4c45' }}>{error}</div>}
+    </div>
   </section>;
 }
