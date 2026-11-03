@@ -5,6 +5,7 @@ import { appendPluginRecord } from '@deepseek-ai/dsh-session';
 import { generateImage } from '../capabilities/image.js';
 import { presentDeliverable, type DeliveryOrigin } from '../capabilities/deliver.js';
 import { CG_RECORD, type CgJob, type DirectorPlan, type Scene } from './state.js';
+import { cgCooldownRemaining } from './cg-policy.js';
 
 const queues = new WeakMap<Context, Promise<void>>();
 const controllers = new WeakMap<Context, Set<AbortController>>();
@@ -20,7 +21,7 @@ export function queueCgJob(ctx: Context, agent: Agent, request: NonNullable<Dire
   const scene = retry?.scene ?? state.current.scene;
   const fingerprint = cgFingerprint(scene, request, ctx.umamusume.settings.GENIMG_MODEL, ctx.umamusume.settings.GENIMG_API_BASE_URL);
   if (!retry && state.cgJobs.some(job => job.fingerprint === fingerprint)) return '此画面已生成或已提交过，继续使用原任务。';
-  if (!retry && state.cgJobs.some(job => origin.turn - job.turn < 3)) return 'CG 尚在冷却间隔中，本轮继续文字剧情。';
+  if (!retry && cgCooldownRemaining(state.cgJobs, origin.turn)) return 'CG 尚在冷却间隔中，本轮继续文字剧情。';
   if (retry && retry.status !== 'error') throw new Error('只有失败的 CG 可以重试。');
   const job: CgJob = { id: retry?.id ?? randomUUID(), turn: origin.turn, fingerprint, scene, description: request.description, characters: request.characters, status: 'queued' };
   const session = ctx.sessions.get(agent.id);

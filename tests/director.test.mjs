@@ -61,6 +61,21 @@ test('one user turn produces at most one bounded director plan and rejects inval
   assert.equal(f.session.snapshotEvents().length, before);
 });
 
+test('per-character wardrobe and props normalize deterministically without changing persisted scene types', async () => {
+  const f = fixture();
+  const scene = { wardrobe: { tokai_teio: '轻便外套', rice_shower: '蓝色连衣裙' }, props: { 店内: '菜单', rice_shower: '纸袋' } };
+  const plan = { ...twoActors, scene };
+  const normalized = validatePlan(plan, f.state());
+  assert.equal(normalized.scene.wardrobe, 'rice_shower：蓝色连衣裙；tokai_teio：轻便外套');
+  assert.deepEqual(validatePlan({ ...plan, scene: { ...scene, wardrobe: { rice_shower: '蓝色连衣裙', tokai_teio: '轻便外套' } } }, f.state()), normalized);
+  assert.throws(() => validatePlan({ ...plan, scene: { props: { 店内: { item: '菜单' } } } }, f.state()));
+  assert.throws(() => validatePlan({ ...plan, scene: { wardrobe: { rice_shower: 123 } } }, f.state()));
+  f.input('开始');
+  await playScene(f.ctx, f.exec(), plan);
+  assert.equal(f.state().current.scene.wardrobe, normalized.scene.wardrobe);
+  assert.equal(f.state().threads.rice_shower.scene.props, normalized.scene.props);
+});
+
 test('failed or truncated actor output stops later speakers and publishes no invented reply', async () => {
   for (const options of [{ response: () => '{"action":' }, { finish: 'max-tokens' }]) {
     const f = fixture(options);

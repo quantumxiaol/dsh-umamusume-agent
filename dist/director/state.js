@@ -9,7 +9,16 @@ export const THREAD_RECORD = 'plugin:umamusume/director-thread';
 export const CG_RECORD = 'plugin:umamusume/director-cg';
 export const CG_TOGGLE_RECORD = 'plugin:umamusume/director-cg-enabled';
 const shortText = z.string().trim().max(300);
-export const Scene = z.object({ location: shortText, time: shortText, weather: shortText, lighting: shortText, atmosphere: shortText, wardrobe: shortText, props: shortText });
+const sceneDetail = z.string().trim().max(1200);
+// Accept the model's natural per-character notation, but persist one stable
+// string representation so existing sessions and actor prefix caches agree.
+const sceneDetailInput = z.union([
+    sceneDetail,
+    z.record(z.string().trim().min(1).max(80), shortText)
+        .refine(value => Object.keys(value).length <= 12, '场景明细最多 12 项')
+        .transform(value => Object.entries(value).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([name, text]) => `${name}：${text}`).join('；')),
+]).pipe(sceneDetail);
+export const Scene = z.object({ location: shortText, time: shortText, weather: shortText, lighting: shortText, atmosphere: shortText, wardrobe: sceneDetail, props: sceneDetail });
 export const StorySetup = z.object({
     title: z.string().trim().min(1).max(120),
     cast: z.array(z.string().min(1)).min(1).max(4).refine(ids => new Set(ids).size === ids.length, '出演角色不能重复'),
@@ -17,7 +26,7 @@ export const StorySetup = z.object({
     outline: z.string().trim().max(12000),
 }).strict();
 export const DirectorPlan = z.object({
-    scene: Scene.partial().default({}),
+    scene: Scene.extend({ wardrobe: sceneDetailInput, props: sceneDetailInput }).partial().default({}),
     narration: z.string().trim().max(1200).default(''),
     speakers: z.array(z.object({ character: z.string().min(1), intent: z.string().trim().min(1).max(600) }).strict()).min(1).max(3),
     cg: z.object({

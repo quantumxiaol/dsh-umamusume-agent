@@ -6,6 +6,7 @@ import { playScene } from '../dist/director/runtime.js';
 import { queueCgJob, waitForCgJobs } from '../dist/director/cg-jobs.js';
 import { waitForTtsJobs } from '../dist/capabilities/tts-jobs.js';
 import { CG_TOGGLE_RECORD } from '../dist/director/state.js';
+import { configureDirector } from '../dist/director/service.js';
 
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zq2cAAAAASUVORK5CYII=', 'base64');
 const cg = { description: '傍晚的训练场，米浴与帝皇穿训练服在看台前相视微笑。', characters: ['rice_shower', 'tokai_teio'], reason: 'opening' };
@@ -107,4 +108,72 @@ test('unsupported multi-reference edits falls back once; generations receive no 
   assert.equal(typeof requests[1].body, 'string');
   assert.match(JSON.parse(requests[1].body).prompt, /Rice Shower/);
   assert.equal(f.state().cgJobs[0].status, 'complete');
+});
+
+test('omitted CG is filled for the opening and a scene change after cooldown, without drawing every turn', async t => {
+  const requests = [];
+  t.mock.method(globalThis, 'fetch', async (_url, options) => {
+    requests.push(options.body);
+    return Response.json({ data: [{ b64_json: png.toString('base64') }] });
+  });
+  const f = fixture({ image: true });
+  f.input('开始');
+  await playScene(f.ctx, f.exec(), twoActors);
+  await waitForCgJobs(f.ctx);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].getAll('image[]').length, 2);
+  assert.doesNotMatch(requests[0].get('prompt'), /秘密大纲|意外暴雨/);
+  for (let turn = 2; turn <= 5; turn += 1) {
+    f.input('继续', turn);
+    await playScene(f.ctx, f.exec(), { scene: turn === 2 ? { location: '甜点店' } : {}, speakers: twoActors.speakers });
+    await waitForCgJobs(f.ctx);
+    assert.equal(requests.length, turn < 4 ? 1 : 2);
+  }
+  assert.deepEqual(f.state().cgJobs.map(job => [job.turn, job.scene.location, job.status]), [[1, '训练场', 'complete'], [4, '甜点店', 'complete']]);
+});
+
+test('manual drawing fills an existing scene without advancing dialogue or issuing duplicate requests', async t => {
+  let requests = 0;
+  t.mock.method(globalThis, 'fetch', async () => {
+    requests += 1;
+    return Response.json({ data: [{ b64_json: png.toString('base64') }] });
+  });
+  const f = fixture({ image: true });
+  assert.equal((await configureDirector(f.ctx, f.agent, 'draw-cg')).kind, 'error');
+  await configureDirector(f.ctx, f.agent, 'cg off');
+  f.input('开始');
+  await playScene(f.ctx, f.exec(), twoActors);
+  await waitForCgJobs(f.ctx);
+  assert.equal(requests, 0, 'CG off prevents automatic drawings');
+  const lines = structuredClone(f.state().lines);
+  const calls = f.calls.length;
+  await configureDirector(f.ctx, f.agent, 'cg on');
+  assert.equal((await configureDirector(f.ctx, f.agent, 'draw-cg')).kind, 'success');
+  await configureDirector(f.ctx, f.agent, 'draw-cg');
+  await waitForCgJobs(f.ctx);
+  assert.equal(requests, 1);
+  assert.equal(f.calls.length, calls);
+  assert.deepEqual(f.state().lines, lines);
+  assert.equal(f.state().cgJobs[0].turn, 1);
+  assert.equal(f.state().cgJobs[0].status, 'complete');
+  assert.equal(f.session.snapshotEvents().filter(event => event.type === 'deliverables/presented').at(-1).data.turn, 1);
+});
+
+test('a failed automatic CG is not retried on later dialogue turns or the draw button', async t => {
+  let requests = 0;
+  t.mock.method(globalThis, 'fetch', async () => {
+    requests += 1;
+    return Response.json({ error: { message: 'offline failure' } }, { status: 503 });
+  });
+  const f = fixture({ image: true });
+  f.input('开始');
+  await playScene(f.ctx, f.exec(), twoActors);
+  await waitForCgJobs(f.ctx);
+  f.input('继续', 5);
+  await playScene(f.ctx, f.exec(), { speakers: twoActors.speakers });
+  await waitForCgJobs(f.ctx);
+  const result = await configureDirector(f.ctx, f.agent, 'draw-cg');
+  assert.equal(result.kind, 'error');
+  assert.match(result.text, /重试/);
+  assert.equal(requests, 1);
 });

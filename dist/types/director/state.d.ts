@@ -32,8 +32,8 @@ export declare const DirectorPlan: z.ZodObject<{
         weather: z.ZodOptional<z.ZodString>;
         lighting: z.ZodOptional<z.ZodString>;
         atmosphere: z.ZodOptional<z.ZodString>;
-        wardrobe: z.ZodOptional<z.ZodString>;
-        props: z.ZodOptional<z.ZodString>;
+        wardrobe: z.ZodOptional<z.ZodPipe<z.ZodUnion<readonly [z.ZodString, z.ZodPipe<z.ZodRecord<z.ZodString, z.ZodString>, z.ZodTransform<string, Record<string, string>>>]>, z.ZodString>>;
+        props: z.ZodOptional<z.ZodPipe<z.ZodUnion<readonly [z.ZodString, z.ZodPipe<z.ZodRecord<z.ZodString, z.ZodString>, z.ZodTransform<string, Record<string, string>>>]>, z.ZodString>>;
     }, z.core.$strip>>;
     narration: z.ZodDefault<z.ZodString>;
     speakers: z.ZodArray<z.ZodObject<{

@@ -9,7 +9,7 @@ import { playScene } from '../dist/director/runtime.js';
 function render(state, voice = { ttsEnabled: false, ttsJobs: [] }) {
   const f = fixture();
   return renderToStaticMarkup(React.createElement(DirectorDock, {
-    useProjection: key => key === 'umamusumeDirector' ? { ...state, catalog: f.cards, imageAvailable: false } : voice,
+    useProjection: key => key === 'umamusumeDirector' ? { imageAvailable: false, ...state, catalog: f.cards } : voice,
     useSession: selector => selector({ running: false }), execute: async () => {},
   }));
 }
@@ -34,4 +34,39 @@ test('playback displays the real speaker and public dialogue, with no hidden out
   assert.match(html, /第 2 段角色台词/);
   assert.match(html, /继续剧情/);
   assert.doesNotMatch(html, /秘密大纲|意外暴雨|autoPlay|autoplay/);
+});
+
+test('CG status distinguishes an unrequested scene, an active job and a failed job', async () => {
+  const f = fixture();
+  f.input('开始');
+  await playScene(f.ctx, f.exec(), twoActors);
+  const state = { ...f.state(), cgEnabled: true, imageAvailable: true };
+  const empty = render(state);
+  assert.match(empty, /本场景尚未绘制 CG/);
+  assert.match(empty, /绘制当前场景/);
+  const job = { id: 'cg', turn: 1, scene: state.current.scene, description: '当前场景', characters: ['rice_shower'], fingerprint: 'cg', status: 'generating' };
+  const pending = render({ ...state, cgJobs: [job] });
+  assert.match(pending, /CG 正在后台绘制/);
+  assert.doesNotMatch(pending, /绘制当前场景/);
+  const failed = render({ ...state, cgJobs: [{ ...job, status: 'error', error: '服务不可用' }] });
+  assert.match(failed, /CG 失败：服务不可用/);
+  assert.match(failed, /重试这张 CG/);
+});
+
+test('CG playback excludes future images and unrelated scene errors', async t => {
+  const previousDocument = globalThis.document;
+  globalThis.document = { baseURI: 'https://preview.invalid/' };
+  t.after(() => { if (previousDocument === undefined) delete globalThis.document; else globalThis.document = previousDocument; });
+  const f = fixture();
+  f.input('开始');
+  await playScene(f.ctx, f.exec(), twoActors);
+  const state = { ...f.state(), cgEnabled: true, imageAvailable: true };
+  const job = { id: 'cg', turn: 1, scene: state.current.scene, description: '当前场景 CG', characters: ['rice_shower'], fingerprint: 'cg', status: 'complete', path: '/tmp/current-cg.png' };
+  const ready = render({ ...state, cgJobs: [job] });
+  assert.match(ready, /alt="当前场景 CG"/);
+  assert.match(ready, /正在展示本场景 CG/);
+  const future = render({ ...state, cgJobs: [{ ...job, turn: 2 }] });
+  assert.doesNotMatch(future, /alt="当前场景 CG"/);
+  const elsewhere = render({ ...state, cgJobs: [{ ...job, status: 'error', error: '旧场景错误', scene: { ...job.scene, location: '另一家店' } }] });
+  assert.doesNotMatch(elsewhere, /旧场景错误|重试这张 CG/);
 });

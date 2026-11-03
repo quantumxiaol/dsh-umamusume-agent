@@ -3,6 +3,7 @@ import { appendPluginRecord } from '@deepseek-ai/dsh-session';
 import { generateImage } from '../capabilities/image.js';
 import { presentDeliverable } from '../capabilities/deliver.js';
 import { CG_RECORD } from './state.js';
+import { cgCooldownRemaining } from './cg-policy.js';
 const queues = new WeakMap();
 const controllers = new WeakMap();
 export function cgFingerprint(scene, request, model, baseUrl) {
@@ -18,7 +19,7 @@ export function queueCgJob(ctx, agent, request, origin, retry) {
     const fingerprint = cgFingerprint(scene, request, ctx.umamusume.settings.GENIMG_MODEL, ctx.umamusume.settings.GENIMG_API_BASE_URL);
     if (!retry && state.cgJobs.some(job => job.fingerprint === fingerprint))
         return '此画面已生成或已提交过，继续使用原任务。';
-    if (!retry && state.cgJobs.some(job => origin.turn - job.turn < 3))
+    if (!retry && cgCooldownRemaining(state.cgJobs, origin.turn))
         return 'CG 尚在冷却间隔中，本轮继续文字剧情。';
     if (retry && retry.status !== 'error')
         throw new Error('只有失败的 CG 可以重试。');

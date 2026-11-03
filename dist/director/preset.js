@@ -5,6 +5,7 @@ import { playScene } from './runtime.js';
 export const name = 'umamusume-director';
 export const inject = ['umamusume', 'systemPrompt', 'tools', 'attachments', 'sessions', 'sessionProjections', 'llm'];
 const PLAY_SCENE = 'umamusume_play_scene';
+const SCENE_DETAIL = { oneOf: [{ type: 'string' }, { type: 'object', additionalProperties: true }] };
 export function apply(ctx) {
     ctx.systemPrompt.section({
         name: PERSONA_PREFIX_SECTION,
@@ -33,8 +34,8 @@ export function apply(ctx) {
         description: '按导演计划推进一轮互动剧情：角色依次独立回复，后台按角色配音，并在合适时机绘制 CG。工具完成后直接等待玩家，不要再复述或追加角色台词。',
         parameters: {
             scene: {
-                type: 'object', description: '只包含本轮变化的环境字段；不变时使用 {}。', additionalProperties: false,
-                properties: { location: { type: 'string' }, time: { type: 'string' }, weather: { type: 'string' }, lighting: { type: 'string' }, atmosphere: { type: 'string' }, wardrobe: { type: 'string', description: '当前角色服装，连续场景保持不变。' }, props: { type: 'string', description: '当前可见的重要道具。' } },
+                type: 'object', description: '首次推进填写开场地点、时间；以后只包含变化字段，不变时使用 {}。', additionalProperties: false,
+                properties: { location: { type: 'string' }, time: { type: 'string' }, weather: { type: 'string' }, lighting: { type: 'string' }, atmosphere: { type: 'string' }, wardrobe: { ...SCENE_DETAIL, description: '当前服装，连续场景保持不变。可用文字（最多 1200 字），或角色 ID 到服装文字的对象；每项值必须是字符串。' }, props: { ...SCENE_DETAIL, description: '当前可见的重要道具。可用文字（最多 1200 字），或角色/位置到道具文字的对象；每项值必须是字符串。' } },
             },
             narration: { type: 'string', description: '简短的公开环境或过渡旁白，不能替角色或玩家行动。' },
             speakers: {

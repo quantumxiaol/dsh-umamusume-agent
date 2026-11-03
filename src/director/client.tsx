@@ -3,6 +3,7 @@ import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client';
 import type {} from '@deepseek-ai/dsh-client-ui-session/client';
 import type {} from './state.js';
+import { cgCooldownRemaining, sceneCgJobs } from './cg-policy.js';
 
 const field: CSSProperties = { boxSizing: 'border-box', width: '100%', border: '1px solid var(--dsw-alias-border-l2, #d9dde4)', borderRadius: 8, padding: '8px 10px', background: 'var(--dsw-alias-bg-layer-1, white)', color: 'inherit', font: 'inherit' };
 const button: CSSProperties = { ...field, width: 'auto', cursor: 'pointer' };
@@ -41,8 +42,10 @@ export function DirectorDock({ useProjection, useSession, execute }: PropsRuntim
   const line = visible[index];
   const currentTurn = line?.turn ?? state.current.turn;
   const scene = state.scenes[String(currentTurn)] ?? state.current.scene;
-  const cg = state.cgJobs.filter(job => job.turn <= currentTurn && job.status === 'complete' && job.path && JSON.stringify(job.scene) === JSON.stringify(scene)).at(-1);
-  const pendingCg = state.cgJobs.filter(job => job.turn <= currentTurn).at(-1);
+  const sceneJobs = sceneCgJobs(state.cgJobs, scene, currentTurn);
+  const cg = sceneJobs.filter(job => job.status === 'complete' && job.path).at(-1);
+  const pendingCg = sceneJobs.at(-1);
+  const cgCooldown = cgCooldownRemaining(state.cgJobs, state.current.turn);
   const audio = line ? voice?.ttsJobs.find(job => job.lineId === line.id) : undefined;
   const activeCast = state.setup?.cast ?? [];
   const editingSetup = !state.setup || (editing && !state.started);
@@ -97,7 +100,14 @@ export function DirectorDock({ useProjection, useSession, execute }: PropsRuntim
         <button style={primary} disabled={locked} onClick={() => { setSelected(undefined); void run('story continue'); }}>{running ? `${state.current.speaker ?? '导演'}正在回应…` : state.started ? '继续剧情' : '开始剧情'}</button>
         {audio?.status === 'complete' && audio.attachment && <audio key={audio.id} aria-label={`${line?.name}的配音`} controls preload="none" src={urlFor(audio.attachment.path)} style={{ height: 30, width: 'min(100%, 340px)' }} />}
         {audio && audio.status !== 'complete' && <span role={audio.status === 'error' ? 'alert' : 'status'} style={{ fontSize: 12 }}>{audio.status === 'error' ? `配音失败：${audio.error}` : '本段配音正在后台处理…'}</span>}
-        {pendingCg && pendingCg.status !== 'complete' && <span style={{ fontSize: 12, width: '100%', opacity: 0.8 }}>{pendingCg.status === 'error' ? `CG 失败：${pendingCg.error}` : 'CG 正在后台绘制，文字剧情可以继续。'}{pendingCg.status === 'error' && <button style={{ ...button, marginLeft: 8 }} disabled={locked || !state.cgEnabled} onClick={() => void run(`story retry-cg ${pendingCg.id}`)}>重试这张 CG</button>}</span>}
+        {state.cgEnabled && <div role="status" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, fontSize: 12, width: '100%' }}>
+          <span style={{ opacity: 0.8 }}>{pendingCg?.status === 'error' ? `CG 失败：${pendingCg.error}` : pendingCg?.status === 'queued' ? 'CG 已排队，文字剧情可以继续。' : pendingCg?.status === 'generating' ? 'CG 正在后台绘制，文字剧情可以继续。' : cg ? '正在展示本场景 CG。' : '本场景尚未绘制 CG。'}</span>
+          {pendingCg?.status === 'error' && <button style={button} disabled={locked} onClick={() => void run(`story retry-cg ${pendingCg.id}`)}>重试这张 CG</button>}
+          {!pendingCg && currentTurn === state.current.turn && <>
+            <button style={button} disabled={locked || !state.imageAvailable || state.current.phase !== 'complete' || Boolean(cgCooldown)} title="绘制已发生的当前场景，不推进剧情" onClick={() => void run('story draw-cg')}>绘制当前场景</button>
+            {cgCooldown > 0 && <span style={{ opacity: 0.65 }}>再推进 {cgCooldown} 轮后可绘制新 CG。</span>}
+          </>}
+        </div>}
       </div>
     </>}
     {!!state.current.error && <div role="alert" style={{ padding: '0 14px 10px', color: '#bd4c45' }}>{state.current.error}</div>}

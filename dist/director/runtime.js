@@ -3,6 +3,7 @@ import { appendPluginRecord } from '@deepseek-ai/dsh-session';
 import { captureDeliveryOrigin } from '../capabilities/deliver.js';
 import { queueTtsJob } from '../capabilities/tts-jobs.js';
 import { queueCgJob } from './cg-jobs.js';
+import { automaticCg } from './cg-policy.js';
 import { performActor } from './threads.js';
 import { DirectorPlan, LINE_RECORD, SETUP_RECORD, TURN_RECORD } from './state.js';
 const running = new WeakMap();
@@ -84,9 +85,10 @@ export async function playScene(ctx, exec, value) {
             }
         }
         exec.signal.throwIfAborted();
-        if (plan.cg) {
+        const cg = automaticCg(ctx.umamusume.directorState(agent), plan.cg);
+        if (cg) {
             try {
-                notes.push(queueCgJob(ctx, agent, plan.cg, origin));
+                notes.push(queueCgJob(ctx, agent, cg, origin));
             }
             catch (error) {
                 notes.push(`CG 未能排队：${error instanceof Error ? error.message : String(error)}`);

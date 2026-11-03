@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import type UmamusumeService from '../index.js';
 import { TTS_JOB_RECORD } from '../state.js';
 import { queueCgJob } from './cg-jobs.js';
+import { cgCooldownRemaining, currentSceneCg, sceneCgJobs } from './cg-policy.js';
 import { CG_RECORD, CG_TOGGLE_RECORD, DIRECTOR_KEY, DIRECTOR_PRESET_ID, DirectorState, DirectorView, SETUP_RECORD, StorySetup, TURN_RECORD, initialDirectorState, reduceDirectorState } from './state.js';
 
 export function registerDirectorProjection(ctx: Context, service: UmamusumeService): void {
@@ -78,10 +79,19 @@ export async function configureDirector(ctx: Context, agent: Agent, argument: st
     appendPluginRecord(session, CG_TOGGLE_RECORD, { enabled: value === 'on' });
     return { kind: 'success', text: `CG 已${value === 'on' ? '开启' : '关闭'}。` };
   }
+  if (verb === 'draw-cg') {
+    if (!state.cgEnabled || !ctx.umamusume.availability.image) return { kind: 'error', text: '请先配置图像 API 并开启 CG。' };
+    if (!state.setup || state.current.phase !== 'complete' || state.current.turn < 1) return { kind: 'error', text: '请先完成一轮剧情，再绘制当前场景。' };
+    const existing = sceneCgJobs(state.cgJobs, state.current.scene, state.current.turn).at(-1);
+    if (existing) return { kind: existing.status === 'error' ? 'error' : 'success', text: existing.status === 'error' ? '本场景绘制失败，请点击“重试这张 CG”。' : '本场景已有 CG 或正在绘制，请等待或查看已有画面。' };
+    const remaining = cgCooldownRemaining(state.cgJobs, state.current.turn);
+    if (remaining) return { kind: 'error', text: `距离上一张 CG 尚不足 3 轮，请再推进 ${remaining} 轮。` };
+    return { kind: 'success', text: queueCgJob(ctx, agent, currentSceneCg(state), { turn: state.current.turn, callId: ToolCallId(randomUUID()) }) };
+  }
   if (verb === 'retry-cg') {
     const job = state.cgJobs.find(item => item.id === value);
     if (!job || job.status !== 'error') return { kind: 'error', text: '没有可重试的失败画面。' };
     return { kind: 'success', text: queueCgJob(ctx, agent, { description: job.description, characters: job.characters, reason: 'key-moment' }, { turn: job.turn, callId: ToolCallId(randomUUID()) }, job) };
   }
-  return { kind: 'success', text: '用法：/uma story setup <JSON>；/uma story cg on|off；/uma story retry-cg <任务ID>' };
+  return { kind: 'success', text: '用法：/uma story setup <JSON>；/uma story cg on|off；/uma story draw-cg；/uma story retry-cg <任务ID>' };
 }

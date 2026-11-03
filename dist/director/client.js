@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { cgCooldownRemaining, sceneCgJobs } from './cg-policy.js';
 const field = { boxSizing: 'border-box', width: '100%', border: '1px solid var(--dsw-alias-border-l2, #d9dde4)', borderRadius: 8, padding: '8px 10px', background: 'var(--dsw-alias-bg-layer-1, white)', color: 'inherit', font: 'inherit' };
 const button = { ...field, width: 'auto', cursor: 'pointer' };
 const primary = { ...button, background: '#536a91', borderColor: '#536a91', color: '#fff' };
@@ -48,8 +49,10 @@ export function DirectorDock({ useProjection, useSession, execute }) {
     const line = visible[index];
     const currentTurn = line?.turn ?? state.current.turn;
     const scene = state.scenes[String(currentTurn)] ?? state.current.scene;
-    const cg = state.cgJobs.filter(job => job.turn <= currentTurn && job.status === 'complete' && job.path && JSON.stringify(job.scene) === JSON.stringify(scene)).at(-1);
-    const pendingCg = state.cgJobs.filter(job => job.turn <= currentTurn).at(-1);
+    const sceneJobs = sceneCgJobs(state.cgJobs, scene, currentTurn);
+    const cg = sceneJobs.filter(job => job.status === 'complete' && job.path).at(-1);
+    const pendingCg = sceneJobs.at(-1);
+    const cgCooldown = cgCooldownRemaining(state.cgJobs, state.current.turn);
     const audio = line ? voice?.ttsJobs.find(job => job.lineId === line.id) : undefined;
     const activeCast = state.setup?.cast ?? [];
     const editingSetup = !state.setup || (editing && !state.started);
@@ -112,9 +115,15 @@ export function DirectorDock({ useProjection, useSession, execute }) {
                     React.createElement("button", { style: primary, disabled: locked, onClick: () => { setSelected(undefined); void run('story continue'); } }, running ? `${state.current.speaker ?? '导演'}正在回应…` : state.started ? '继续剧情' : '开始剧情'),
                     audio?.status === 'complete' && audio.attachment && React.createElement("audio", { key: audio.id, "aria-label": `${line?.name}的配音`, controls: true, preload: "none", src: urlFor(audio.attachment.path), style: { height: 30, width: 'min(100%, 340px)' } }),
                     audio && audio.status !== 'complete' && React.createElement("span", { role: audio.status === 'error' ? 'alert' : 'status', style: { fontSize: 12 } }, audio.status === 'error' ? `配音失败：${audio.error}` : '本段配音正在后台处理…'),
-                    pendingCg && pendingCg.status !== 'complete' && React.createElement("span", { style: { fontSize: 12, width: '100%', opacity: 0.8 } },
-                        pendingCg.status === 'error' ? `CG 失败：${pendingCg.error}` : 'CG 正在后台绘制，文字剧情可以继续。',
-                        pendingCg.status === 'error' && React.createElement("button", { style: { ...button, marginLeft: 8 }, disabled: locked || !state.cgEnabled, onClick: () => void run(`story retry-cg ${pendingCg.id}`) }, "\u91CD\u8BD5\u8FD9\u5F20 CG")))),
+                    state.cgEnabled && React.createElement("div", { role: "status", style: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, fontSize: 12, width: '100%' } },
+                        React.createElement("span", { style: { opacity: 0.8 } }, pendingCg?.status === 'error' ? `CG 失败：${pendingCg.error}` : pendingCg?.status === 'queued' ? 'CG 已排队，文字剧情可以继续。' : pendingCg?.status === 'generating' ? 'CG 正在后台绘制，文字剧情可以继续。' : cg ? '正在展示本场景 CG。' : '本场景尚未绘制 CG。'),
+                        pendingCg?.status === 'error' && React.createElement("button", { style: button, disabled: locked, onClick: () => void run(`story retry-cg ${pendingCg.id}`) }, "\u91CD\u8BD5\u8FD9\u5F20 CG"),
+                        !pendingCg && currentTurn === state.current.turn && React.createElement(React.Fragment, null,
+                            React.createElement("button", { style: button, disabled: locked || !state.imageAvailable || state.current.phase !== 'complete' || Boolean(cgCooldown), title: "\u7ED8\u5236\u5DF2\u53D1\u751F\u7684\u5F53\u524D\u573A\u666F\uFF0C\u4E0D\u63A8\u8FDB\u5267\u60C5", onClick: () => void run('story draw-cg') }, "\u7ED8\u5236\u5F53\u524D\u573A\u666F"),
+                            cgCooldown > 0 && React.createElement("span", { style: { opacity: 0.65 } },
+                                "\u518D\u63A8\u8FDB ",
+                                cgCooldown,
+                                " \u8F6E\u540E\u53EF\u7ED8\u5236\u65B0 CG\u3002"))))),
             !!state.current.error && React.createElement("div", { role: "alert", style: { padding: '0 14px 10px', color: '#bd4c45' } }, state.current.error),
             !!error && React.createElement("div", { role: "alert", style: { padding: '0 14px 10px', color: '#bd4c45' } }, error)));
 }
