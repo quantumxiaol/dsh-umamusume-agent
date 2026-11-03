@@ -16,15 +16,15 @@ export function startTtsJob(ctx, exec, input) {
 export function queueTtsJob(ctx, agent, input, origin = captureDeliveryOrigin(ctx, agent)) {
     if (!ctx.umamusume.sessionState(agent).ttsEnabled)
         throw new Error('本会话已关闭 TTS，请先开启后再试。');
-    const character = ctx.umamusume.characterForAgent(agent);
+    const character = input.character ?? ctx.umamusume.characterForAgent(agent);
     const controller = new AbortController();
     const id = randomUUID();
     const createdAt = Date.now();
-    const job = { id, character: character.name, status: 'queued', createdAt, updatedAt: createdAt };
+    const job = { id, character: character.name, status: 'queued', createdAt, updatedAt: createdAt, turn: origin.turn, ...(input.lineId ? { lineId: input.lineId } : {}) };
     appendTtsRecord(ctx, agent, job);
     track(ctx, controller);
     const previous = queues.get(ctx) ?? Promise.resolve();
-    const next = previous.catch(() => { }).then(() => runJob(ctx, agent, job, input, controller, origin));
+    const next = previous.catch(() => { }).then(() => runJob(ctx, agent, character, job, input, controller, origin));
     const settled = next.finally(() => {
         controllers.get(ctx)?.delete(controller);
         if (queues.get(ctx) === settled)
@@ -37,8 +37,7 @@ export function queueTtsJob(ctx, agent, input, origin = captureDeliveryOrigin(ct
 export async function waitForTtsJobs(ctx) {
     await queues.get(ctx);
 }
-async function runJob(ctx, agent, initial, input, controller, origin) {
-    const character = ctx.umamusume.characterForAgent(agent);
+async function runJob(ctx, agent, character, initial, input, controller, origin) {
     const update = (status, details = {}) => {
         appendTtsRecord(ctx, agent, { ...initial, ...details, status, updatedAt: Date.now() });
     };
@@ -47,7 +46,7 @@ async function runJob(ctx, agent, initial, input, controller, origin) {
         signal.throwIfAborted();
         update('synthesizing');
         const data = await synthesizeSpeech(ctx.umamusume, character, {
-            text: input.text, style: input.style, signal,
+            text: input.text, spokenText: input.spokenText, style: input.style, signal,
         }, ctx, update);
         update('saving');
         const attachment = await ctx.attachments.saveFile({ data, name: `${character.id}-speech.mp3` });

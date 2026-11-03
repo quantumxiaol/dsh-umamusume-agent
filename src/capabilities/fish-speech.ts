@@ -13,9 +13,9 @@ import type { TtsJobStatus } from '../state.js';
 export async function synthesizeFishSpeech(service: UmamusumeService, character: CharacterCard, input: SpeechSynthesisInput, context?: Context, onStage?: (status: TtsJobStatus) => void): Promise<Buffer> {
   const language = service.settings.TTS_LANGUAGE;
   if (language !== 'zh' && language !== 'ja') throw new Error(`不支持的配音语言：${language}`);
-  if (language === 'ja' && !context) throw new Error('日文翻译需要当前 Agent 上下文。');
-  if (language === 'ja') onStage?.('translating');
-  const text = language === 'ja' ? await translateToJapanese(context!, context!.agents.requireInitiator(), input.text, input.signal) : input.text;
+  if (language === 'ja' && !input.spokenText && !context) throw new Error('日文翻译需要当前 Agent 上下文。');
+  if (language === 'ja' && !input.spokenText) onStage?.('translating');
+  const text = input.spokenText ?? (language === 'ja' ? await translateToJapanese(context!, context!.agents.requireInitiator(), input.text, input.signal) : input.text);
   onStage?.('synthesizing');
   const reference = await service.voiceReference(character);
   if (!character.referenceText) throw new Error(`角色 ${character.name} 缺少参考音频文本，不能使用 FishSpeech 声音克隆。`);

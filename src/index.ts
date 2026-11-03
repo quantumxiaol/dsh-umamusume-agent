@@ -14,6 +14,8 @@ import { loadCharacters } from './characters/loader.js';
 import type { CharacterAsset, CharacterCard, CapabilityAvailability } from './characters/types.js';
 import { StoryCatalog } from './story/catalog.js';
 import type { StorySource } from './story/types.js';
+import { registerDirectorProjection, configureDirector } from './director/service.js';
+import { DIRECTOR_KEY, DIRECTOR_PRESET_ID, type DirectorState } from './director/state.js';
 import {
   PRESET_ID, STATE_KEY, CHARACTER_RECORD, TTS_TOGGLE_RECORD, State as stateSchema, PublicState as viewSchema,
   initialState, reduceState, type State,
@@ -63,7 +65,7 @@ export default class UmamusumeService extends Service {
     }
     ctx.sessionProjections.register({
       key: STATE_KEY,
-      stateVersion: 1,
+      stateVersion: 2,
       stateSchema,
       init: header => initialState(header.agentPreset === PRESET_ID, this.settings.defaultCharacter, this.settings.TTS_ENABLED === 'true'),
       apply: reduceState,
@@ -75,6 +77,7 @@ export default class UmamusumeService extends Service {
         }),
       },
     });
+    registerDirectorProjection(ctx, this);
   }
 
   async* [Service.init](): AsyncGenerator<() => Promise<void>, void> {
@@ -89,6 +92,7 @@ export default class UmamusumeService extends Service {
     };
     this.ctx.logger.info('Umamusume capabilities: image=%s, tts=%s, asr=%s, search=%s, story=%s', this.availability.image, this.availability.tts, this.availability.asr, this.availability.search, this.availability.story);
     yield await this.ctx.agentPresets.register(this.presetDefinition());
+    yield await this.ctx.agentPresets.register(this.presetDefinition(true));
   }
 
   character(id: string): CharacterCard {
@@ -107,6 +111,12 @@ export default class UmamusumeService extends Service {
     return state;
   }
 
+  directorState(agent: Agent): DirectorState {
+    const state = this.ctx.sessionProjections.stateOf(agent.session, DIRECTOR_KEY);
+    if (!state) throw new Error('剧情播放状态不可用。');
+    return state;
+  }
+
   capabilitiesFor(character: CharacterCard, agent?: Agent): CapabilityAvailability {
     const needsReference = this.settings.TTS_PROVIDER === 'fishspeech' || this.settings.TTS_MODEL === 'mimo-v2.5-tts-voiceclone';
     const hasReference = this.settings.TTS_PROVIDER === 'fishspeech'
@@ -121,17 +131,20 @@ export default class UmamusumeService extends Service {
     };
   }
 
-  configure({ agent, rawInput }: Pick<CommandInvocation, 'agent' | 'rawInput'>): CommandResult {
+  async configure({ agent, rawInput }: Pick<CommandInvocation, 'agent' | 'rawInput'>): Promise<CommandResult> {
     const state = this.sessionState(agent);
-    if (!state.enabled) return { kind: 'error', text: '请先新建会话并选择“赛马娘”。' };
+    const director = this.directorState(agent);
+    if (!state.enabled && !director.enabled) return { kind: 'error', text: '请先新建会话并选择“赛马娘”或“剧情播放”。' };
     if (agent.status !== 'idle') return { kind: 'error', text: '请先停止或等待当前回复完成。' };
     const [, verb = '', argument = ''] = /^(\S+)(?:\s+([\s\S]*))?$/.exec(rawInput.trim()) ?? [];
+    if (verb === 'story') return configureDirector(this.ctx, agent, argument);
     if (verb === 'tts') {
       if (argument !== 'on' && argument !== 'off') return { kind: 'error', text: '用法：/uma tts on 或 /uma tts off' };
       const enabled = argument === 'on';
       appendPluginRecord(this.pluginSession(agent), TTS_TOGGLE_RECORD, { version: 1, enabled });
       return { kind: 'success', text: `本会话 TTS 已${enabled ? '开启' : '关闭'}` };
     }
+    if (director.enabled) return { kind: 'error', text: '请在剧情播放面板设置出演角色，或使用 /uma story setup。' };
     if (verb !== 'character') return { kind: 'success', text: '用法：/uma character <角色ID、中文名或英文名>；/uma tts on|off' };
     if (state.started) return { kind: 'error', text: '本会话已开始；更换角色请新建会话。' };
     const normalized = argument.trim().toLowerCase();
@@ -187,16 +200,16 @@ export default class UmamusumeService extends Service {
     return cached;
   }
 
-  private presetDefinition(): PresetDefinition {
+  private presetDefinition(director = false): PresetDefinition {
     return {
-      id: PRESET_ID,
-      name: '赛马娘',
-      description: '选择一位赛马娘进行角色扮演；使用 Harness 原生会话、模型路由与上下文压缩。',
-      order: 50,
+      id: director ? DIRECTOR_PRESET_ID : PRESET_ID,
+      name: director ? '剧情播放' : '赛马娘',
+      description: director ? '给定出演角色、开场与大纲，导演安排多人互动、角色配音与 CG，逐轮等待玩家。' : '选择一位赛马娘进行角色扮演；使用 Harness 原生会话、模型路由与上下文压缩。',
+      order: director ? 51 : 50,
       plugins: [
-        { id: 'umamusume-character', name: 'dsh-umamusume-agent/preset' },
+        director ? { id: 'umamusume-director', name: 'dsh-umamusume-agent/director' } : { id: 'umamusume-character', name: 'dsh-umamusume-agent/preset' },
         { id: 'umamusume-commands', name: 'dsh-umamusume-agent/commands' },
-        ...(this.availability.search ? [{
+        ...(!director && this.availability.search ? [{
           id: 'deepseek-search',
           name: 'cordis:group',
           group: true,

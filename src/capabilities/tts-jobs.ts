@@ -6,6 +6,9 @@ import { appendPluginRecord } from '@deepseek-ai/dsh-session';
 import { TTS_JOB_RECORD, type TtsJob, type TtsJobStatus } from '../state.js';
 import { synthesizeSpeech } from './mimo.js';
 import { captureDeliveryOrigin, presentDeliverable, type DeliveryOrigin } from './deliver.js';
+import type { CharacterCard } from '../characters/types.js';
+
+export interface SpeechJobInput { text: string; style?: string; spokenText?: string; character?: CharacterCard; lineId?: string }
 
 const queues = new WeakMap<Context, Promise<void>>();
 const controllers = new WeakMap<Context, Set<AbortController>>();
@@ -18,17 +21,17 @@ export function startTtsJob(ctx: Context, exec: ToolRunContext, input: { text: s
   return queueTtsJob(ctx, exec.agent, input, origin);
 }
 
-export function queueTtsJob(ctx: Context, agent: Agent, input: { text: string; style?: string }, origin = captureDeliveryOrigin(ctx, agent)): { jobId: string; status: 'queued' } {
+export function queueTtsJob(ctx: Context, agent: Agent, input: SpeechJobInput, origin = captureDeliveryOrigin(ctx, agent)): { jobId: string; status: 'queued' } {
   if (!ctx.umamusume.sessionState(agent).ttsEnabled) throw new Error('本会话已关闭 TTS，请先开启后再试。');
-  const character = ctx.umamusume.characterForAgent(agent);
+  const character = input.character ?? ctx.umamusume.characterForAgent(agent);
   const controller = new AbortController();
   const id = randomUUID();
   const createdAt = Date.now();
-  const job: TtsJob = { id, character: character.name, status: 'queued', createdAt, updatedAt: createdAt };
+  const job: TtsJob = { id, character: character.name, status: 'queued', createdAt, updatedAt: createdAt, turn: origin.turn, ...(input.lineId ? { lineId: input.lineId } : {}) };
   appendTtsRecord(ctx, agent, job);
   track(ctx, controller);
   const previous = queues.get(ctx) ?? Promise.resolve();
-  const next = previous.catch(() => {}).then(() => runJob(ctx, agent, job, input, controller, origin));
+  const next = previous.catch(() => {}).then(() => runJob(ctx, agent, character, job, input, controller, origin));
   const settled = next.finally(() => {
     controllers.get(ctx)?.delete(controller);
     if (queues.get(ctx) === settled) queues.delete(ctx);
@@ -42,8 +45,7 @@ export async function waitForTtsJobs(ctx: Context): Promise<void> {
   await queues.get(ctx);
 }
 
-async function runJob(ctx: Context, agent: Agent, initial: TtsJob, input: { text: string; style?: string }, controller: AbortController, origin: DeliveryOrigin): Promise<void> {
-  const character = ctx.umamusume.characterForAgent(agent);
+async function runJob(ctx: Context, agent: Agent, character: CharacterCard, initial: TtsJob, input: SpeechJobInput, controller: AbortController, origin: DeliveryOrigin): Promise<void> {
   const update = (status: TtsJobStatus, details: Partial<TtsJob> = {}) => {
     appendTtsRecord(ctx, agent, { ...initial, ...details, status, updatedAt: Date.now() });
   };
@@ -52,7 +54,7 @@ async function runJob(ctx: Context, agent: Agent, initial: TtsJob, input: { text
     signal.throwIfAborted();
     update('synthesizing');
     const data = await synthesizeSpeech(ctx.umamusume, character, {
-      text: input.text, style: input.style, signal,
+      text: input.text, spokenText: input.spokenText, style: input.style, signal,
     }, ctx, update);
     update('saving');
     const attachment = await ctx.attachments.saveFile({ data, name: `${character.id}-speech.mp3` });

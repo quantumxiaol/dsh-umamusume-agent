@@ -28,7 +28,7 @@ export async function synthesizeSpeech(service: UmamusumeService, character: Cha
       model,
       messages: [
         { role: 'user', content: `请以${character.name}的声音表演台词。${style}` },
-        { role: 'assistant', content: input.text },
+        { role: 'assistant', content: input.spokenText ?? input.text },
       ],
       audio,
       stream: false,

@@ -4,6 +4,7 @@ import type { CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands
 import { Config as ConfigSchema, API_KEY_REFS, type Config } from './config.js';
 import type { CharacterCard, CapabilityAvailability } from './characters/types.js';
 import type { StorySource } from './story/types.js';
+import { type DirectorState } from './director/state.js';
 import { type State } from './state.js';
 export type { Config } from './config.js';
 type Capability = keyof typeof API_KEY_REFS;
@@ -26,8 +27,9 @@ export default class UmamusumeService extends Service {
     character(id: string): CharacterCard;
     characterForAgent(agent?: Agent): CharacterCard;
     sessionState(agent: Agent): State;
+    directorState(agent: Agent): DirectorState;
     capabilitiesFor(character: CharacterCard, agent?: Agent): CapabilityAvailability;
-    configure({ agent, rawInput }: Pick<CommandInvocation, 'agent' | 'rawInput'>): CommandResult;
+    configure({ agent, rawInput }: Pick<CommandInvocation, 'agent' | 'rawInput'>): Promise<CommandResult>;
     private pluginSession;
     storyFor(character: CharacterCard): StorySource | undefined;
     portrait(character: CharacterCard): Promise<Buffer>;

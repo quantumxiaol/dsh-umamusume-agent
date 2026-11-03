@@ -7,6 +7,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-chat/client';
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client';
 import type {} from '@deepseek-ai/dsh-api-remotes/client';
 import type {} from './state.js';
+import { DirectorDock } from './director/client.js';
 
 type Controls = { execute: (command: string) => Promise<void> };
 
@@ -96,4 +97,15 @@ export function apply(ctx: Context): void {
       },
     }),
   }, CharacterDock));
+  ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
+    name: 'conversation.input.dock', id: 'umamusume-director', order: 21,
+    inject: sessionId => ({
+      execute: async (command: string) => {
+        const result = await ctx.remote.commands.execute(sessionId, `/uma ${command}`, []);
+        if (!result.ok) throw new Error(result.error.message);
+        if (!result.value) throw new Error('请先选择“剧情播放”预设。');
+        if (result.value.result.kind === 'error') throw new Error(result.value.result.text);
+      },
+    }),
+  }, DirectorDock));
 }

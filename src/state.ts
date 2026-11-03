@@ -21,6 +21,8 @@ export const TtsJob = z.object({
   updatedAt: z.number().int().nonnegative(),
   error: z.string().optional(),
   attachment: z.object({ path: z.string().min(1), name: z.string().min(1) }).optional(),
+  lineId: z.string().optional(),
+  turn: z.number().int().positive().optional(),
 });
 export type TtsJob = z.infer<typeof TtsJob>;
 export type TtsJobStatus = z.infer<typeof TtsJobStatus>;
@@ -54,7 +56,10 @@ export function reduceState(state: State, event: SessionEvent): State {
   }
   if (event.type.startsWith(TTS_JOB_RECORD)) {
     const job = TtsJob.parse(event.data);
-    return { ...state, ttsJobs: [...state.ttsJobs.filter(item => item.id !== job.id), job].slice(-5) };
+    const jobs = state.ttsJobs.some(item => item.id === job.id)
+      ? state.ttsJobs.map(item => item.id === job.id ? job : item)
+      : [...state.ttsJobs, job];
+    return { ...state, ttsJobs: jobs.slice(-80) };
   }
   return state;
 }

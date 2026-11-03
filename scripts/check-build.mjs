@@ -21,6 +21,5 @@ if (before !== digestBuild()) {
   process.exit(1);
 }
 const manifest = JSON.parse(readFileSync('package.json', 'utf8'));
-readFileSync(manifest.main);
-readFileSync(manifest.exports['./preset']);
-console.log('Build output is current and both plugin entries exist.');
+for (const entry of Object.values(manifest.exports)) readFileSync(entry);
+console.log('Build output is current and all exported entries exist.');

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-const { initialState, reduceState, CHARACTER_RECORD, TTS_TOGGLE_RECORD } = await import('../dist/state.js');
+const { initialState, reduceState, CHARACTER_RECORD, TTS_TOGGLE_RECORD, TTS_JOB_RECORD } = await import('../dist/state.js');
 
 function selected(agentPreset) {
   return { type: 'agent-preset/selected', data: { agentPreset } };
@@ -47,4 +47,15 @@ test('TTS toggle from a proxied session persists after the character is locked',
   assert.equal(state.ttsEnabled, true);
   state = reduceState(state, { type: TTS_TOGGLE_RECORD, ignorable: true, data: { version: 1, enabled: false } });
   assert.equal(state.ttsEnabled, false);
+});
+
+test('an older voice job finishing does not replace the latest queued job in the dock', () => {
+  let state = initialState(true, 'rice_shower');
+  const first = { id: 'a', character: '米浴', status: 'queued', createdAt: 1000, updatedAt: 1000 };
+  const second = { ...first, id: 'b', character: '东海帝皇' };
+  for (const job of [first, second, { ...first, status: 'complete', updatedAt: 2000 }]) {
+    state = reduceState(state, { type: TTS_JOB_RECORD, ignorable: true, data: job });
+  }
+  assert.equal(state.ttsJobs.at(-1).id, 'b');
+  assert.equal(state.ttsJobs[0].status, 'complete');
 });

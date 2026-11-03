@@ -6,11 +6,11 @@ export async function synthesizeFishSpeech(service, character, input, context, o
     const language = service.settings.TTS_LANGUAGE;
     if (language !== 'zh' && language !== 'ja')
         throw new Error(`不支持的配音语言：${language}`);
-    if (language === 'ja' && !context)
+    if (language === 'ja' && !input.spokenText && !context)
         throw new Error('日文翻译需要当前 Agent 上下文。');
-    if (language === 'ja')
+    if (language === 'ja' && !input.spokenText)
         onStage?.('translating');
-    const text = language === 'ja' ? await translateToJapanese(context, context.agents.requireInitiator(), input.text, input.signal) : input.text;
+    const text = input.spokenText ?? (language === 'ja' ? await translateToJapanese(context, context.agents.requireInitiator(), input.text, input.signal) : input.text);
     onStage?.('synthesizing');
     const reference = await service.voiceReference(character);
     if (!character.referenceText)

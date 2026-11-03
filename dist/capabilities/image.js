@@ -5,10 +5,10 @@ export async function generateImage(service, input) {
         return await requestImage(service, input);
     }
     catch (error) {
-        if (!input.reference || !(error instanceof ApiHttpError) || error.status !== 404)
+        if ((!input.reference && !input.references?.length) || !(error instanceof ApiHttpError) || error.status !== 404)
             throw error;
         const prompt = input.referenceDescription ? `${input.referenceDescription}\n${input.prompt}` : input.prompt;
-        return requestImage(service, { ...input, prompt, reference: undefined });
+        return requestImage(service, { ...input, prompt, reference: undefined, references: undefined });
     }
 }
 async function requestImage(service, input) {
@@ -16,7 +16,8 @@ async function requestImage(service, input) {
     const { GENIMG_API_BASE_URL: baseUrl, GENIMG_MODEL: model } = service.settings;
     const headers = { authorization: `Bearer ${apiKey}`, accept: 'application/json', 'user-agent': 'dsh-umamusume-agent/0.1.0' };
     let body;
-    if (input.reference) {
+    const references = input.references?.length ? input.references : input.reference ? [input.reference] : [];
+    if (references.length) {
         const form = new FormData();
         form.set('model', model);
         form.set('prompt', input.prompt);
@@ -24,14 +25,16 @@ async function requestImage(service, input) {
         form.set('size', input.size);
         form.set('quality', input.quality);
         form.set('response_format', 'b64_json');
-        form.set('image', new Blob([Uint8Array.from(input.reference.data)], { type: 'image/png' }), input.reference.name);
+        for (const reference of references) {
+            form.append(references.length === 1 ? 'image' : 'image[]', new Blob([Uint8Array.from(reference.data)], { type: 'image/png' }), reference.name);
+        }
         body = form;
     }
     else {
         headers['content-type'] = 'application/json';
         body = JSON.stringify({ model, prompt: input.prompt, n: 1, size: input.size, quality: input.quality, response_format: 'b64_json' });
     }
-    const response = await fetch(apiUrl(baseUrl, input.reference ? '/images/edits' : '/images/generations'), {
+    const response = await fetch(apiUrl(baseUrl, references.length ? '/images/edits' : '/images/generations'), {
         method: 'POST', redirect: 'error', headers, body, signal: requestSignal(input.signal),
     });
     const payload = await responseJson(response);

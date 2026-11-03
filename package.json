@@ -1,13 +1,14 @@
 {
   "name": "dsh-umamusume-agent",
   "version": "0.1.0",
-  "description": "Single-preset Umamusume roleplay with native DeepSeek Harness agents, search, story retrieval, image generation, and FishSpeech voice synthesis",
+  "description": "Umamusume roleplay and interactive story direction with independent character contexts, CG, and FishSpeech voice synthesis for DeepSeek Harness",
   "type": "module",
   "license": "MIT",
   "main": "dist/index.js",
   "exports": {
     ".": "./dist/index.js",
     "./preset": "./dist/preset.js",
+    "./director": "./dist/director/preset.js",
     "./commands": "./dist/commands.js",
     "./client": "./dist/client.js",
     "./package.json": "./package.json"
@@ -87,6 +88,7 @@
     "@deepseek-ai/cordis-plugin-loader": "1.0.6",
     "@deepseek-ai/dsh": "0.2.1-rc.2",
     "@deepseek-ai/dsh-agent": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-agent-loop": "0.2.1-rc.2",
     "@deepseek-ai/dsh-agent-preset-registry": "0.2.1-rc.2",
     "@deepseek-ai/dsh-api-remotes": "0.2.1-rc.2",
     "@deepseek-ai/dsh-api-session-controller": "0.2.1-rc.2",
@@ -110,6 +112,7 @@
     "@types/react": "18.3.31",
     "esbuild": "0.25.12",
     "react": "18.3.1",
+    "react-dom": "18.3.1",
     "typescript": "5.9.3"
   },
   "keywords": [

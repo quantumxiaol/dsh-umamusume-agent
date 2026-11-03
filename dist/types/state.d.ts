@@ -41,6 +41,8 @@ export declare const TtsJob: z.ZodObject<{
         path: z.ZodString;
         name: z.ZodString;
     }, z.core.$strip>>;
+    lineId: z.ZodOptional<z.ZodString>;
+    turn: z.ZodOptional<z.ZodNumber>;
 }, z.core.$strip>;
 export type TtsJob = z.infer<typeof TtsJob>;
 export type TtsJobStatus = z.infer<typeof TtsJobStatus>;
@@ -68,6 +70,8 @@ export declare const State: z.ZodObject<{
             path: z.ZodString;
             name: z.ZodString;
         }, z.core.$strip>>;
+        lineId: z.ZodOptional<z.ZodString>;
+        turn: z.ZodOptional<z.ZodNumber>;
     }, z.core.$strip>>;
 }, z.core.$strip>;
 export type State = z.infer<typeof State>;
@@ -100,6 +104,8 @@ export declare const PublicState: z.ZodObject<{
             path: z.ZodString;
             name: z.ZodString;
         }, z.core.$strip>>;
+        lineId: z.ZodOptional<z.ZodString>;
+        turn: z.ZodOptional<z.ZodNumber>;
     }, z.core.$strip>>;
     catalog: z.ZodArray<z.ZodObject<{
         id: z.ZodString;

@@ -10,11 +10,16 @@ export interface ImageGenerationInput {
         data: Buffer;
         name: string;
     };
+    references?: {
+        data: Buffer;
+        name: string;
+    }[];
     referenceDescription?: string;
     signal: AbortSignal;
 }
 export interface SpeechSynthesisInput {
     text: string;
+    spokenText?: string;
     style?: string;
     signal: AbortSignal;
 }

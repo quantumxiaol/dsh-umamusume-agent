@@ -1,0 +1,104 @@
+import React, { useEffect, useState, type CSSProperties } from 'react';
+import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
+import type {} from '@deepseek-ai/dsh-client-ui-conversation/client';
+import type {} from '@deepseek-ai/dsh-client-ui-session/client';
+import type {} from './state.js';
+
+const field: CSSProperties = { boxSizing: 'border-box', width: '100%', border: '1px solid var(--dsw-alias-border-l2, #d9dde4)', borderRadius: 8, padding: '8px 10px', background: 'var(--dsw-alias-bg-layer-1, white)', color: 'inherit', font: 'inherit' };
+const button: CSSProperties = { ...field, width: 'auto', cursor: 'pointer' };
+const primary: CSSProperties = { ...button, background: '#536a91', borderColor: '#536a91', color: '#fff' };
+const urlFor = (path: string) => new URL(`api/file?path=${encodeURIComponent(path)}`, document.baseURI).href;
+
+export function DirectorDock({ useProjection, useSession, execute }: PropsRuntime<'conversation.input.dock'> & { execute: (command: string) => Promise<void> }) {
+  const state = useProjection('umamusumeDirector');
+  const voice = useProjection('umamusume');
+  const running = useSession((snapshot: { running: boolean }) => snapshot.running);
+  const [title, setTitle] = useState('放学后的约定');
+  const [opening, setOpening] = useState('傍晚的特雷森训练场，训练刚刚结束。训练员和大家留在看台旁，准备商量接下来的安排。');
+  const [outline, setOutline] = useState('');
+  const [cast, setCast] = useState<string[]>(['rice_shower']);
+  const [query, setQuery] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [selected, setSelected] = useState<string>();
+  const [collapsed, setCollapsed] = useState(false);
+  const [editing, setEditing] = useState(false);
+  useEffect(() => {
+    if (!state?.setup) return;
+    setTitle(state.setup.title); setOpening(state.setup.opening); setOutline(state.setup.outline); setCast(state.setup.cast);
+  }, [state?.setup]);
+  if (!state?.enabled) return null;
+  const locked = busy || Boolean(running);
+  const run = async (command: string) => {
+    setBusy(true); setError('');
+    try { await execute(command); setEditing(false); }
+    catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)); }
+    finally { setBusy(false); }
+  };
+  const visible = state.lines.filter(line => line.kind !== 'user');
+  const requestedIndex = selected ? visible.findIndex(line => line.id === selected) : visible.length - 1;
+  const index = requestedIndex >= 0 ? requestedIndex : visible.length - 1;
+  const line = visible[index];
+  const currentTurn = line?.turn ?? state.current.turn;
+  const scene = state.scenes[String(currentTurn)] ?? state.current.scene;
+  const cg = state.cgJobs.filter(job => job.turn <= currentTurn && job.status === 'complete' && job.path && JSON.stringify(job.scene) === JSON.stringify(scene)).at(-1);
+  const pendingCg = state.cgJobs.filter(job => job.turn <= currentTurn).at(-1);
+  const audio = line ? voice?.ttsJobs.find(job => job.lineId === line.id) : undefined;
+  const activeCast = state.setup?.cast ?? [];
+  const editingSetup = !state.setup || (editing && !state.started);
+  const selectedNames = activeCast.map(id => state.catalog.find(row => row.id === id)?.name ?? id);
+  return <section aria-label="剧情播放" style={{ width: '100%', maxWidth: 900, margin: '0 auto 10px', boxSizing: 'border-box', border: '1px solid var(--dsw-alias-border-l2, #d9dde4)', borderRadius: 14, overflow: 'hidden', fontSize: 13 }}>
+    <header style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, padding: '10px 14px' }}>
+      <strong style={{ flex: 1 }}>剧情播放{state.setup ? ` · ${state.setup.title}` : ''}</strong>
+      {state.setup && <>
+        <button style={button} disabled={locked} aria-pressed={voice?.ttsEnabled} onClick={() => void run(`tts ${voice?.ttsEnabled ? 'off' : 'on'}`)}>配音 {voice?.ttsEnabled ? '开启' : '关闭'}</button>
+        <button style={button} disabled={locked || !state.imageAvailable} aria-pressed={state.cgEnabled} title={state.imageAvailable ? '在关键画面后台生成 CG' : '请先配置图像 API'} onClick={() => void run(`story cg ${state.cgEnabled ? 'off' : 'on'}`)}>CG {state.cgEnabled ? '开启' : '关闭'}</button>
+        {!state.started && <button style={button} disabled={locked} onClick={() => setEditing(value => !value)}>故事设置</button>}
+        <button style={button} aria-expanded={!collapsed} onClick={() => setCollapsed(value => !value)}>{collapsed ? '展开舞台' : '收起舞台'}</button>
+      </>}
+    </header>
+    {editingSetup && <form onSubmit={event => { event.preventDefault(); void run(`story setup ${JSON.stringify({ title, opening, outline, cast })}`); }} style={{ padding: '0 14px 14px', display: 'grid', gap: 10 }}>
+      <label>故事标题<input aria-label="故事标题" required maxLength={120} style={field} value={title} disabled={locked} onChange={event => setTitle(event.target.value)} /></label>
+      <fieldset disabled={locked} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+        <legend>出演角色 · {cast.length}/4</legend>
+        <input aria-label="搜索出演角色" placeholder="中文名 / English / 角色 ID" style={field} value={query} onChange={event => setQuery(event.target.value)} />
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 132, overflowY: 'auto', marginTop: 8 }}>
+          {state.catalog.filter(character => cast.includes(character.id) || `${character.name} ${character.nameEn} ${character.id}`.toLowerCase().includes(query.trim().toLowerCase())).map(character => <button key={character.id} type="button" aria-pressed={cast.includes(character.id)} disabled={!cast.includes(character.id) && cast.length >= 4} style={cast.includes(character.id) ? primary : button}
+            onClick={() => setCast(ids => ids.includes(character.id) ? ids.filter(id => id !== character.id) : [...ids, character.id])}>{character.name}</button>)}
+        </div>
+      </fieldset>
+      <label>公开开场<textarea aria-label="公开开场" required maxLength={2000} rows={2} style={{ ...field, resize: 'vertical' }} disabled={locked} value={opening} onChange={event => setOpening(event.target.value)} /></label>
+      <label>剧情大纲 <span style={{ opacity: 0.65 }}>· 只给导演，不作为角色已知剧情</span><textarea aria-label="剧情大纲" maxLength={12000} rows={4} placeholder="写下想经历的冲突、转折和情绪方向；留白也可以。导演会尊重玩家选择，不强行照着大纲演。" style={{ ...field, resize: 'vertical' }} disabled={locked} value={outline} onChange={event => setOutline(event.target.value)} /></label>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}><button type="submit" style={primary} disabled={locked || !cast.length}>保存故事</button><span style={{ opacity: 0.65 }}>每次推进后等待玩家；开始后出演名单与大纲锁定。</span></div>
+    </form>}
+    {state.setup && !editingSetup && !collapsed && <>
+      <div style={{ position: 'relative', minHeight: 290, height: 'min(42vw, 370px)', background: 'linear-gradient(150deg, #25364d, #556a78 60%, #b2afa1)', color: '#fff', isolation: 'isolate', overflow: 'hidden' }}>
+        {cg?.path && <img src={urlFor(cg.path)} alt={cg.description} style={{ position: 'absolute', width: '100%', height: '100%', objectFit: 'cover', zIndex: -2 }} />}
+        {!cg && <div style={{ position: 'absolute', inset: '15% 6% 0', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-around', zIndex: -1 }}>
+          {activeCast.map(id => state.portraits[id] ? <img key={id} src={urlFor(state.portraits[id]!)} alt={state.catalog.find(character => character.id === id)?.name ?? id} style={{ minWidth: 0, maxWidth: `${90 / activeCast.length}%`, height: '100%', objectFit: 'contain', objectPosition: 'bottom', transform: `scale(${activeCast.length > 2 ? 1.3 : 1.6})`, transformOrigin: '50% 65%', opacity: !line?.character || line.character === id ? 1 : 0.5, filter: !line?.character || line.character === id ? 'none' : 'brightness(0.75)', transition: 'opacity 180ms' }} /> : null)}
+        </div>}
+        <div style={{ position: 'absolute', inset: '0 0 auto', padding: '12px 16px', background: 'linear-gradient(#101923a0, transparent)', fontSize: 12 }}>
+          <span>{scene.location || '故事开场'}{scene.time ? ` · ${scene.time}` : ''}</span>
+          <span style={{ float: 'right', opacity: 0.85 }}>{selectedNames.join(' / ')}</span>
+        </div>
+        <div aria-live="polite" style={{ position: 'absolute', left: 12, right: 12, bottom: 12, border: '1px solid #ffffff40', borderRadius: 12, padding: '13px 16px', background: '#102034eb', boxShadow: '0 6px 24px #0003', maxHeight: '65%', overflowY: 'auto' }}>
+          <strong style={{ color: '#d6e3ff', display: 'block', marginBottom: 7 }}>{line?.name ?? '序幕'}</strong>
+          {line?.action && <p style={{ opacity: 0.8, fontStyle: 'italic', margin: '0 0 8px', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{line.action}</p>}
+          <p style={{ margin: 0, fontSize: 15, lineHeight: 1.8, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{line?.text ?? state.setup.opening}</p>
+        </div>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, padding: '10px 14px' }}>
+        <button style={button} disabled={!line || index <= 0} aria-label="上一段剧情" onClick={() => setSelected(visible[index - 1]?.id)}>‹ 上一段</button>
+        <button style={button} disabled={!line || index >= visible.length - 1} aria-label="下一段剧情" onClick={() => setSelected(visible[index + 1]?.id)}>下一段 ›</button>
+        {selected && <button style={button} onClick={() => setSelected(undefined)}>回到最新</button>}
+        <span style={{ opacity: 0.6, flex: 1 }}>{line ? `第 ${line.turn} 轮` : '等待开场'}</span>
+        <button style={primary} disabled={locked} onClick={() => { setSelected(undefined); void run('story continue'); }}>{running ? `${state.current.speaker ?? '导演'}正在回应…` : state.started ? '继续剧情' : '开始剧情'}</button>
+        {audio?.status === 'complete' && audio.attachment && <audio key={audio.id} aria-label={`${line?.name}的配音`} controls preload="none" src={urlFor(audio.attachment.path)} style={{ height: 30, width: 'min(100%, 340px)' }} />}
+        {audio && audio.status !== 'complete' && <span role={audio.status === 'error' ? 'alert' : 'status'} style={{ fontSize: 12 }}>{audio.status === 'error' ? `配音失败：${audio.error}` : '本段配音正在后台处理…'}</span>}
+        {pendingCg && pendingCg.status !== 'complete' && <span style={{ fontSize: 12, width: '100%', opacity: 0.8 }}>{pendingCg.status === 'error' ? `CG 失败：${pendingCg.error}` : 'CG 正在后台绘制，文字剧情可以继续。'}{pendingCg.status === 'error' && <button style={{ ...button, marginLeft: 8 }} disabled={locked || !state.cgEnabled} onClick={() => void run(`story retry-cg ${pendingCg.id}`)}>重试这张 CG</button>}</span>}
+      </div>
+    </>}
+    {!!state.current.error && <div role="alert" style={{ padding: '0 14px 10px', color: '#bd4c45' }}>{state.current.error}</div>}
+    {!!error && <div role="alert" style={{ padding: '0 14px 10px', color: '#bd4c45' }}>{error}</div>}
+  </section>;
+}
