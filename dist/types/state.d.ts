@@ -43,6 +43,13 @@ export declare const TtsJob: z.ZodObject<{
     }, z.core.$strip>>;
     lineId: z.ZodOptional<z.ZodString>;
     turn: z.ZodOptional<z.ZodNumber>;
+    callId: z.ZodOptional<z.ZodString>;
+    request: z.ZodOptional<z.ZodObject<{
+        characterId: z.ZodString;
+        text: z.ZodString;
+        spokenText: z.ZodOptional<z.ZodString>;
+        style: z.ZodOptional<z.ZodString>;
+    }, z.core.$strip>>;
 }, z.core.$strip>;
 export type TtsJob = z.infer<typeof TtsJob>;
 export type TtsJobStatus = z.infer<typeof TtsJobStatus>;
@@ -72,6 +79,13 @@ export declare const State: z.ZodObject<{
         }, z.core.$strip>>;
         lineId: z.ZodOptional<z.ZodString>;
         turn: z.ZodOptional<z.ZodNumber>;
+        callId: z.ZodOptional<z.ZodString>;
+        request: z.ZodOptional<z.ZodObject<{
+            characterId: z.ZodString;
+            text: z.ZodString;
+            spokenText: z.ZodOptional<z.ZodString>;
+            style: z.ZodOptional<z.ZodString>;
+        }, z.core.$strip>>;
     }, z.core.$strip>>;
 }, z.core.$strip>;
 export type State = z.infer<typeof State>;
@@ -106,6 +120,13 @@ export declare const PublicState: z.ZodObject<{
         }, z.core.$strip>>;
         lineId: z.ZodOptional<z.ZodString>;
         turn: z.ZodOptional<z.ZodNumber>;
+        callId: z.ZodOptional<z.ZodString>;
+        request: z.ZodOptional<z.ZodObject<{
+            characterId: z.ZodString;
+            text: z.ZodString;
+            spokenText: z.ZodOptional<z.ZodString>;
+            style: z.ZodOptional<z.ZodString>;
+        }, z.core.$strip>>;
     }, z.core.$strip>>;
     catalog: z.ZodArray<z.ZodObject<{
         id: z.ZodString;

@@ -8,11 +8,12 @@ import { appendPluginRecord } from '@deepseek-ai/dsh-session';
 import { Config as ConfigSchema, API_KEY_REFS, resolveConfig } from './config.js';
 import { loadCharacters } from './characters/loader.js';
 import { StoryCatalog } from './story/catalog.js';
+import { retryTtsJob } from './capabilities/tts-jobs.js';
 import { registerDirectorProjection, configureDirector } from './director/service.js';
 import { DIRECTOR_KEY, DIRECTOR_PRESET_ID } from './director/state.js';
 import { PRESET_ID, STATE_KEY, CHARACTER_RECORD, TTS_TOGGLE_RECORD, State as stateSchema, PublicState as viewSchema, initialState, reduceState, } from './state.js';
 export default class UmamusumeService extends Service {
-    static inject = ['agentPresets', 'credentials', 'sessions', 'sessionProjections', 'attachments'];
+    static inject = ['agentPresets', 'credentials', 'sessions', 'sessionProjections', 'attachments', 'agents'];
     static Config = ConfigSchema;
     settings;
     characters;
@@ -44,7 +45,7 @@ export default class UmamusumeService extends Service {
         }
         ctx.sessionProjections.register({
             key: STATE_KEY,
-            stateVersion: 2,
+            stateVersion: 3,
             stateSchema,
             init: header => initialState(header.agentPreset === PRESET_ID, this.settings.defaultCharacter, this.settings.TTS_ENABLED === 'true'),
             apply: reduceState,
@@ -117,8 +118,18 @@ export default class UmamusumeService extends Service {
         if (verb === 'story')
             return configureDirector(this.ctx, agent, argument);
         if (verb === 'tts') {
+            const retry = /^retry\s+(\S+)$/.exec(argument);
+            if (retry) {
+                try {
+                    retryTtsJob(this.ctx, agent, retry[1]);
+                    return { kind: 'success', text: '这段配音已重新排队，完成后会回到原台词；可以继续剧情。' };
+                }
+                catch (error) {
+                    return { kind: 'error', text: error instanceof Error ? error.message : String(error) };
+                }
+            }
             if (argument !== 'on' && argument !== 'off')
-                return { kind: 'error', text: '用法：/uma tts on 或 /uma tts off' };
+                return { kind: 'error', text: '用法：/uma tts on|off；/uma tts retry <任务ID>' };
             const enabled = argument === 'on';
             appendPluginRecord(this.pluginSession(agent), TTS_TOGGLE_RECORD, { version: 1, enabled });
             return { kind: 'success', text: `本会话 TTS 已${enabled ? '开启' : '关闭'}` };

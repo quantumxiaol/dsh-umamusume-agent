@@ -36,6 +36,21 @@ test('playback displays the real speaker and public dialogue, with no hidden out
   assert.doesNotMatch(html, /秘密大纲|意外暴雨|autoPlay|autoplay/);
 });
 
+test('failed voice offers manual regeneration on its own line, and hides it while queued or complete', async () => {
+  const f = fixture();
+  f.input('开始');
+  await playScene(f.ctx, f.exec(), twoActors);
+  const state = f.state();
+  const job = { id: 'voice-failed', lineId: state.lines.at(-1).id, character: '东海帝皇', status: 'error', error: '服务暂时不可用', createdAt: 1, updatedAt: 2 };
+  const failed = render(state, { ttsEnabled: true, ttsJobs: [job] });
+  assert.match(failed, /配音失败：服务暂时不可用/);
+  assert.match(failed, /重新生成配音/);
+  for (const status of ['queued', 'synthesizing', 'complete']) {
+    assert.doesNotMatch(render(state, { ttsEnabled: true, ttsJobs: [{ ...job, status }] }), /重新生成配音/);
+  }
+  assert.doesNotMatch(render(state, { ttsEnabled: true, ttsJobs: [{ ...job, lineId: 'another-line' }] }), /重新生成配音/);
+});
+
 test('CG status distinguishes an unrequested scene, an active job and a failed job', async () => {
   const f = fixture();
   f.input('开始');

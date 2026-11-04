@@ -119,6 +119,7 @@ export function DirectorDock({ useProjection, useSession, execute }) {
                         void event.currentTarget.play().catch(() => { });
                 }, src: urlFor(audio.attachment.path), style: { height: 30, width: 'min(100%, 340px)' } }),
             audio && audio.status !== 'complete' && React.createElement("span", { role: audio.status === 'error' ? 'alert' : 'status', style: { fontSize: 12 } }, audio.status === 'error' ? `配音失败：${audio.error}` : '本段配音正在后台处理…'),
+            audio?.status === 'error' && React.createElement("button", { style: button, disabled: locked || !voice?.ttsEnabled, title: voice?.ttsEnabled ? '仅重新合成本段配音，不推进剧情' : '请先开启配音', onClick: () => void run(`tts retry ${audio.id}`) }, "\u91CD\u65B0\u751F\u6210\u914D\u97F3"),
             state.cgEnabled && React.createElement("div", { role: "status", style: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, fontSize: 12, width: '100%' } },
                 React.createElement("span", { style: { opacity: 0.8 } }, pendingCg?.status === 'error' ? `CG 失败：${pendingCg.error}` : pendingCg?.status === 'queued' ? 'CG 已排队，文字剧情可以继续。' : pendingCg?.status === 'generating' ? 'CG 正在后台绘制，文字剧情可以继续。' : cg ? '正在展示本场景 CG。' : '本场景尚未绘制 CG。'),
                 pendingCg?.status === 'error' && React.createElement("button", { style: button, disabled: locked, onClick: () => void run(`story retry-cg ${pendingCg.id}`) }, "\u91CD\u8BD5\u8FD9\u5F20 CG"),

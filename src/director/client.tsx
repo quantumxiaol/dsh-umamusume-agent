@@ -109,6 +109,7 @@ export function DirectorDock({ useProjection, useSession, execute }: PropsRuntim
           if (saved.playing) void event.currentTarget.play().catch(() => {});
         }} src={urlFor(audio.attachment.path)} style={{ height: 30, width: 'min(100%, 340px)' }} />}
         {audio && audio.status !== 'complete' && <span role={audio.status === 'error' ? 'alert' : 'status'} style={{ fontSize: 12 }}>{audio.status === 'error' ? `配音失败：${audio.error}` : '本段配音正在后台处理…'}</span>}
+        {audio?.status === 'error' && <button style={button} disabled={locked || !voice?.ttsEnabled} title={voice?.ttsEnabled ? '仅重新合成本段配音，不推进剧情' : '请先开启配音'} onClick={() => void run(`tts retry ${audio.id}`)}>重新生成配音</button>}
         {state.cgEnabled && <div role="status" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, fontSize: 12, width: '100%' }}>
           <span style={{ opacity: 0.8 }}>{pendingCg?.status === 'error' ? `CG 失败：${pendingCg.error}` : pendingCg?.status === 'queued' ? 'CG 已排队，文字剧情可以继续。' : pendingCg?.status === 'generating' ? 'CG 正在后台绘制，文字剧情可以继续。' : cg ? '正在展示本场景 CG。' : '本场景尚未绘制 CG。'}</span>
           {pendingCg?.status === 'error' && <button style={button} disabled={locked} onClick={() => void run(`story retry-cg ${pendingCg.id}`)}>重试这张 CG</button>}

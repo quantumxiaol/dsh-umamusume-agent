@@ -20,7 +20,7 @@ const statusText = {
   queued: '排队等待', translating: '正在翻译', synthesizing: '正在合成', saving: '正在保存附件', complete: '合成完成', error: '合成失败',
 } as const;
 
-function TtsProgress({ job }: { job?: import('./state.js').TtsJob }) {
+function TtsProgress({ job, retry, disabled }: { job?: import('./state.js').TtsJob; retry: (id: string) => void; disabled: boolean }) {
   if (!job) return null;
   const pending = job.status !== 'complete' && job.status !== 'error';
   const url = job.attachment ? new URL(`api/file?path=${encodeURIComponent(job.attachment.path)}`, document.baseURI).href : undefined;
@@ -32,6 +32,7 @@ function TtsProgress({ job }: { job?: import('./state.js').TtsJob }) {
       <a href={url} download={job.attachment!.name} style={{ color: 'inherit' }}>下载 MP3</a>
     </>}
     {job.status === 'error' && <span role="alert" style={{ color: '#c43b3b' }}>{job.error}</span>}
+    {job.status === 'error' && <button type="button" style={control} disabled={disabled} onClick={() => retry(job.id)}>重新生成配音</button>}
   </div>;
 }
 
@@ -78,7 +79,7 @@ function CharacterDock({ useProjection, useSession, execute }: PropsRuntime<'con
       TTS {state.ttsEnabled ? '开启' : '关闭'}
     </button>
     <span style={{ opacity: 0.65, fontSize: 12 }}>{state.started ? '角色已锁定' : '第一条消息前可更换'}</span>
-    <TtsProgress job={state.ttsJobs.at(-1)} />
+    <TtsProgress job={state.ttsJobs.at(-1)} disabled={busy || Boolean(running) || !state.ttsEnabled} retry={id => void run(`tts retry ${id}`)} />
     {!!error && <span role="alert" style={{ color: '#c43b3b', width: '100%' }}>{error}</span>}
   </section>;
 }

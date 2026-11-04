@@ -55,6 +55,10 @@ test('Japanese translation runs in a separate agent and is disposed', async () =
   assert.equal(disposed, true);
   const sections = [];
   const agentCtx = {
+    tools: {
+      presentAs: mode => assert.equal(mode, 'native'),
+      restrict: filter => assert.deepEqual(filter, { allow: [] }),
+    },
     systemPrompt: {
       getSectionOrder: () => 0,
       section: value => sections.push(value),

@@ -2,9 +2,49 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { test } from 'node:test';
 import { Session } from '@deepseek-ai/dsh-session';
+import { fixture } from './director-fixture.mjs';
 
-const { startTtsJob, waitForTtsJobs } = await import('../dist/capabilities/tts-jobs.js');
+const { startTtsJob, queueTtsJob, retryTtsJob, waitForTtsJobs } = await import('../dist/capabilities/tts-jobs.js');
 const { initialState, reduceState, TTS_JOB_RECORD } = await import('../dist/state.js');
+
+test('single-character retry preserves translation and style across repeated service failures', async t => {
+  const f = fixture({ tts: true });
+  let translations = 0;
+  let disposals = 0;
+  f.ctx.agents = { async create(options) {
+    translations += 1;
+    assert.deepEqual(options.agentOptions, f.agent.options);
+    return { agent: {
+      followup() {}, whenIdle: async () => {},
+      session: { deriveMessages: () => [{ role: 'assistant', content: [{ type: 'text', text: '今日は楽しいですね。' }] }] },
+    }, dispose: async () => { disposals += 1; } };
+  } };
+  let requests = 0;
+  t.mock.method(globalThis, 'fetch', async (_url, options) => {
+    requests += 1;
+    assert.equal(JSON.parse(options.body).messages[0].content, '今日は楽しいですね。');
+    return requests < 3 ? Response.json({ error: { message: 'offline' } }, { status: 503 })
+      : Response.json({ choices: [{ message: { audio: { data: Buffer.from('voice').toString('base64') } } }] });
+  });
+  const { jobId } = queueTtsJob(f.ctx, f.agent, { text: '今天真开心。', style: '轻快' }, { turn: 1, callId: 'original-call' });
+  await waitForTtsJobs(f.ctx);
+  assert.equal(f.ctx.umamusume.sessionState(f.agent).ttsJobs[0].status, 'error');
+  const resumed = fixture({ session: f.session, tts: true, turn: 10 });
+  retryTtsJob(resumed.ctx, resumed.agent, jobId);
+  await waitForTtsJobs(resumed.ctx);
+  assert.equal(requests, 2);
+  assert.equal(resumed.ctx.umamusume.sessionState(resumed.agent).ttsJobs[0].status, 'error');
+  retryTtsJob(resumed.ctx, resumed.agent, jobId);
+  await waitForTtsJobs(resumed.ctx);
+  const job = resumed.ctx.umamusume.sessionState(resumed.agent).ttsJobs[0];
+  assert.equal(job.status, 'complete', job.error);
+  assert.equal(job.request.style, '轻快');
+  assert.equal(job.turn, 1);
+  assert.equal(job.callId, 'original-call');
+  assert.equal(translations, 1);
+  assert.equal(disposals, 1);
+  assert.equal(requests, 3);
+});
 
 test('TTS job returns immediately, completes in background, and restores its state', async () => {
   const server = createServer(async (req, res) => {

@@ -4,12 +4,85 @@ import { appendPluginRecord } from '@deepseek-ai/dsh-session';
 import { fixture, twoActors } from './director-fixture.mjs';
 import { playScene } from '../dist/director/runtime.js';
 import { queueCgJob, waitForCgJobs } from '../dist/director/cg-jobs.js';
-import { waitForTtsJobs } from '../dist/capabilities/tts-jobs.js';
+import { retryTtsJob, waitForTtsJobs } from '../dist/capabilities/tts-jobs.js';
+import { TTS_JOB_RECORD, TTS_TOGGLE_RECORD } from '../dist/state.js';
 import { CG_TOGGLE_RECORD } from '../dist/director/state.js';
 import { configureDirector } from '../dist/director/service.js';
 
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zq2cAAAAASUVORK5CYII=', 'base64');
 const cg = { description: '傍晚的训练场，米浴与帝皇穿训练服在看台前相视微笑。', characters: ['rice_shower', 'tokai_teio'], reason: 'opening' };
+
+test('failed voice never blocks the story; retry after restart keeps its line, voice and original delivery', async t => {
+  let available = false;
+  const requests = [];
+  t.mock.method(globalThis, 'fetch', async (_url, options) => {
+    requests.push(JSON.parse(options.body));
+    return available
+      ? Response.json({ choices: [{ message: { audio: { data: Buffer.from('voice').toString('base64') } } }] })
+      : Response.json({ error: { message: 'TTS offline' } }, { status: 503 });
+  });
+  const f = fixture({ tts: true });
+  f.input('开始');
+  await playScene(f.ctx, f.exec(), twoActors);
+  await waitForTtsJobs(f.ctx);
+  const failed = f.ctx.umamusume.sessionState(f.agent).ttsJobs[1];
+  assert.equal(failed.status, 'error');
+  assert.equal(f.state().current.phase, 'complete');
+  f.input('继续往前走', 2);
+  await playScene(f.ctx, f.exec(), { speakers: [twoActors.speakers[0]] });
+  await waitForTtsJobs(f.ctx);
+  assert.equal(requests.length, 3, 'old failures are not automatically retried');
+  const resumed = fixture({ session: f.session, tts: true, turn: 2 });
+  const before = structuredClone(resumed.state());
+  available = true;
+  assert.equal(retryTtsJob(resumed.ctx, resumed.agent, failed.id).jobId, failed.id);
+  assert.throws(() => retryTtsJob(resumed.ctx, resumed.agent, failed.id), /没有可重新生成/);
+  await waitForTtsJobs(resumed.ctx);
+  const jobs = resumed.ctx.umamusume.sessionState(resumed.agent).ttsJobs;
+  assert.equal(jobs.length, 3);
+  assert.equal(jobs[1].status, 'complete');
+  assert.equal(jobs[1].error, undefined);
+  assert.equal(jobs[1].lineId, failed.lineId);
+  assert.equal(jobs[1].createdAt, failed.createdAt);
+  assert.equal(jobs[0].status, 'error', 'other failures stay available for manual retry');
+  assert.equal(requests.length, 4);
+  assert.deepEqual(requests[3], requests[1], 'reuse the original actor voice and prepared Japanese');
+  assert.deepEqual(resumed.state(), before, 'no new story lines, actor history or turns');
+  assert.equal(resumed.calls.length, 0, 'no actor or director calls');
+  const delivered = f.session.snapshotEvents().filter(event => event.type === 'deliverables/presented');
+  assert.equal(delivered.length, 1);
+  assert.equal(delivered[0].data.turn, 1);
+  assert.equal(delivered[0].data.callId, failed.callId);
+  assert.throws(() => retryTtsJob(resumed.ctx, resumed.agent, failed.id), /没有可重新生成/);
+  assert.throws(() => retryTtsJob(resumed.ctx, resumed.agent, 'unknown'), /没有可重新生成/);
+  appendPluginRecord(f.session, TTS_TOGGLE_RECORD, { version: 1, enabled: false });
+  assert.throws(() => retryTtsJob(resumed.ctx, resumed.agent, jobs[0].id), /请先开启/);
+});
+
+test('legacy failed story jobs recover the committed voice text without replaying the actor', async t => {
+  const requests = [];
+  t.mock.method(globalThis, 'fetch', async (_url, options) => {
+    requests.push(JSON.parse(options.body));
+    return Response.json({ choices: [{ message: { audio: { data: Buffer.from('voice').toString('base64') } } }] });
+  });
+  const f = fixture();
+  f.input('开始');
+  await playScene(f.ctx, f.exec(), twoActors);
+  const line = f.state().lines.at(-1);
+  appendPluginRecord(f.session, TTS_JOB_RECORD, { id: 'legacy-failed', character: line.name, lineId: line.id, turn: line.turn, status: 'error', error: 'fetch failed', createdAt: 1000, updatedAt: 2000 });
+  appendPluginRecord(f.session, TTS_TOGGLE_RECORD, { version: 1, enabled: true });
+  const resumed = fixture({ session: f.session, tts: true, turn: 5 });
+  retryTtsJob(resumed.ctx, resumed.agent, 'legacy-failed');
+  await waitForTtsJobs(resumed.ctx);
+  const job = resumed.ctx.umamusume.sessionState(resumed.agent).ttsJobs[0];
+  assert.equal(job.status, 'complete', job.error);
+  assert.equal(job.turn, 1);
+  assert.equal(job.lineId, line.id);
+  assert.equal(job.request.characterId, 'tokai_teio');
+  assert.equal(requests[0].audio.voice, 'voice:tokai_teio');
+  assert.equal(requests[0].messages[0].content, '一緒に頑張ろう、トレーナーさん。');
+  assert.equal(resumed.calls.length, 0);
+});
 
 test('each line uses its own character voice and prepared Japanese; late audio stays on the original turn', async t => {
   const requests = [];

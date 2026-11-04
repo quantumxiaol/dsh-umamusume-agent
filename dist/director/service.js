@@ -30,7 +30,7 @@ export function recoverDirectorJobs(ctx, agent) {
     const session = ctx.sessions.get(agent.id);
     if (!session)
         return;
-    const error = '上次运行已中断，已完成的剧情和附件保留；可继续剧情或手动重试失败的 CG。';
+    const error = '上次运行已中断，已完成的剧情和附件保留；可继续剧情或手动重试失败的 CG、配音。';
     if (state.current.phase === 'acting')
         appendPluginRecord(session, TURN_RECORD, { ...state.current, phase: 'error', error });
     for (const job of state.cgJobs) {

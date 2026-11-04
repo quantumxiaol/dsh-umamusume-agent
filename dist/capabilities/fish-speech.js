@@ -52,6 +52,8 @@ export async function translateToJapanese(ctx, parent, text, signal) {
         agentOptions: { ...parent.options },
         meta: { cwd: parent.session.header.cwd },
         setup(agentCtx) {
+            agentCtx.tools.presentAs('native');
+            agentCtx.tools.restrict({ allow: [] });
             agentCtx.systemPrompt.section({
                 name: PERSONA_PREFIX_SECTION,
                 order: agentCtx.systemPrompt.getSectionOrder('DEPLOYMENT_PERSONA_PREFIX'),

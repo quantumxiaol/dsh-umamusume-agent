@@ -23,6 +23,13 @@ export const TtsJob = z.object({
   attachment: z.object({ path: z.string().min(1), name: z.string().min(1) }).optional(),
   lineId: z.string().optional(),
   turn: z.number().int().positive().optional(),
+  callId: z.string().min(1).optional(),
+  request: z.object({
+    characterId: z.string().min(1),
+    text: z.string().min(1),
+    spokenText: z.string().optional(),
+    style: z.string().optional(),
+  }).optional(),
 });
 export type TtsJob = z.infer<typeof TtsJob>;
 export type TtsJobStatus = z.infer<typeof TtsJobStatus>;

@@ -21,4 +21,8 @@ export declare function queueTtsJob(ctx: Context, agent: Agent, input: SpeechJob
     jobId: string;
     status: 'queued';
 };
+export declare function retryTtsJob(ctx: Context, agent: Agent, id: string): {
+    jobId: string;
+    status: 'queued';
+};
 export declare function waitForTtsJobs(ctx: Context): Promise<void>;

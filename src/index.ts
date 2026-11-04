@@ -13,6 +13,7 @@ import { Config as ConfigSchema, API_KEY_REFS, resolveConfig, type Config } from
 import { loadCharacters } from './characters/loader.js';
 import type { CharacterAsset, CharacterCard, CapabilityAvailability } from './characters/types.js';
 import { StoryCatalog } from './story/catalog.js';
+import { retryTtsJob } from './capabilities/tts-jobs.js';
 import type { StorySource } from './story/types.js';
 import { registerDirectorProjection, configureDirector } from './director/service.js';
 import { DIRECTOR_KEY, DIRECTOR_PRESET_ID, type DirectorState } from './director/state.js';
@@ -32,7 +33,7 @@ declare module '@deepseek-ai/cordis' {
 }
 
 export default class UmamusumeService extends Service {
-  static inject = ['agentPresets', 'credentials', 'sessions', 'sessionProjections', 'attachments'];
+  static inject = ['agentPresets', 'credentials', 'sessions', 'sessionProjections', 'attachments', 'agents'];
   static Config = ConfigSchema;
 
   readonly settings: Config;
@@ -65,7 +66,7 @@ export default class UmamusumeService extends Service {
     }
     ctx.sessionProjections.register({
       key: STATE_KEY,
-      stateVersion: 2,
+      stateVersion: 3,
       stateSchema,
       init: header => initialState(header.agentPreset === PRESET_ID, this.settings.defaultCharacter, this.settings.TTS_ENABLED === 'true'),
       apply: reduceState,
@@ -139,7 +140,14 @@ export default class UmamusumeService extends Service {
     const [, verb = '', argument = ''] = /^(\S+)(?:\s+([\s\S]*))?$/.exec(rawInput.trim()) ?? [];
     if (verb === 'story') return configureDirector(this.ctx, agent, argument);
     if (verb === 'tts') {
-      if (argument !== 'on' && argument !== 'off') return { kind: 'error', text: '用法：/uma tts on 或 /uma tts off' };
+      const retry = /^retry\s+(\S+)$/.exec(argument);
+      if (retry) {
+        try {
+          retryTtsJob(this.ctx, agent, retry[1]!);
+          return { kind: 'success', text: '这段配音已重新排队，完成后会回到原台词；可以继续剧情。' };
+        } catch (error) { return { kind: 'error', text: error instanceof Error ? error.message : String(error) }; }
+      }
+      if (argument !== 'on' && argument !== 'off') return { kind: 'error', text: '用法：/uma tts on|off；/uma tts retry <任务ID>' };
       const enabled = argument === 'on';
       appendPluginRecord(this.pluginSession(agent), TTS_TOGGLE_RECORD, { version: 1, enabled });
       return { kind: 'success', text: `本会话 TTS 已${enabled ? '开启' : '关闭'}` };
