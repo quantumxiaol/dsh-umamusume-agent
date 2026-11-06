@@ -18,14 +18,23 @@ import { CG_RECORD, DIRECTOR_PRESET_ID } from '../dist/director/state.js';
 import { TTS_JOB_RECORD } from '../dist/state.js';
 import { fixture, twoActors } from './director-fixture.mjs';
 
+const separateExecutors = typeof Tools.prototype.presentAs !== 'function';
+
 for (const mode of ['native', 'ptc']) {
   test(`registered story preset saves portraits and executes its inherited tool under host ${mode} mode`, { timeout: 10000 }, async t => {
     const ctx = new Context();
     ctx.baseUrl = new URL('../', import.meta.url).href;
     const loaded = [];
     let handle;
+    let solo;
     try {
-      for (const plugin of [Projections, Sessions, Agents, Llm, SystemPrompt, Tools, TokenMeter, AgentLoop, Commands]) loaded.push(await ctx.plugin(plugin, plugin === Tools ? { mode } : {}));
+      for (const plugin of [Projections, Sessions, Agents, Llm, SystemPrompt, Tools, TokenMeter, AgentLoop, Commands]) loaded.push(await ctx.plugin(plugin, plugin === Tools && !separateExecutors ? { mode } : {}));
+      if (separateExecutors) {
+        if (mode === 'ptc') loaded.push(await ctx.plugin({ name: 'offline-ptc-runtime', apply(host) {
+          host.provide('ptcRuntime', { language: 'typescript', programFormat: 'function-body', run: async () => { throw new Error('Director/translator must not execute a PTC program'); } });
+        } }));
+        loaded.push(await ctx.plugin(await import(`@deepseek-ai/dsh-tool-executor-${mode}`)));
+      }
       loaded.push(await ctx.plugin(Loader));
       ctx.loader.builtins.group = Group;
       loaded.push(await ctx.plugin(AgentPresets, { default: DIRECTOR_PRESET_ID }));
@@ -91,7 +100,9 @@ for (const mode of ['native', 'ptc']) {
       assert.deepEqual(assembly.tools.map(tool => tool.name), ['umamusume_play_scene'], 'the preset must expose its tool to the inheriting agent');
       assert.deepEqual(assembly.tools[0].parameters.required, ['speakers']);
       assert.deepEqual(assembly.tools[0].parameters.properties.scene.properties.wardrobe.oneOf.map(branch => branch.type), ['string', 'object']);
-      const denied = await ctx.tools.execute({ callId: ToolCallId('unrelated-call'), name: 'unrelated_host_tool', arguments: {}, agent: handle.agent, signal: AbortSignal.timeout(5000) });
+      const denied = separateExecutors
+        ? (await ctx.tools.execute({ calls: [{ type: 'tool-call', id: ToolCallId('unrelated-call'), name: 'unrelated_host_tool', arguments: '{}' }], agent: handle.agent, signal: AbortSignal.timeout(5000) })).results[0].result
+        : await ctx.tools.execute({ callId: ToolCallId('unrelated-call'), name: 'unrelated_host_tool', arguments: {}, agent: handle.agent, signal: AbortSignal.timeout(5000) });
       assert.equal(denied.isError, true, 'hiding a tool also prevents its execution by the director');
       assert.equal(unrelatedCalls, 0);
       const cgReady = new Promise(resolve => ctx.on('session/event', (session, event) => {
@@ -151,7 +162,21 @@ for (const mode of ['native', 'ptc']) {
       assert.equal(voices[1].messages[0].content, '今日は楽しいですね。');
       assert.equal(calls.length, 4, 'only missing translation requires a helper model call');
       assert.deepEqual(service.directorState(handle.agent), state);
+      if (separateExecutors) {
+        solo = await ctx.agents.create({ sessionId: randomUUID(), meta: { agentPreset: 'umamusume' }, agentOptions: { provider: 'offline-director', model: 'test' }, setup: async agentCtx => { await ctx.agentPresets.mount(agentCtx, 'umamusume'); } });
+        for (const enabled of [false, true, false]) {
+          const toggle = await ctx.commands.execute(solo.agent, `/uma tts ${enabled ? 'on' : 'off'}`, [], AbortSignal.timeout(5000));
+          assert.equal(toggle.result.kind, 'success');
+          const toolSet = await ctx.tools.resolve({ agent: solo.agent, config: { provider: 'offline-director', model: 'test' }, signal: AbortSignal.timeout(5000) });
+          try {
+            const admitted = ctx.tools.definitions(solo.agent, toolSet);
+            assert.equal(admitted.some(tool => tool.name === 'umamusume_speak'), enabled, 'single-character TTS toggle controls step admission');
+            await ctx.systemPrompt.assemble({ scope: solo.agent, agent: solo.agent, toolSet });
+          } finally { toolSet.dispose(); }
+        }
+      }
     } finally {
+      await solo?.dispose();
       await handle?.dispose();
       for (const fiber of loaded.reverse()) await fiber.dispose();
     }

@@ -25,7 +25,7 @@
 
 ## 开发环境
 
-要求 Node.js 22+，以及兼容 `0.2.1-rc.2` 的 DSH 0.2.x 运行时。
+要求 Node.js 22+。已通过 `0.2.1-rc.2` 与 `0.2.2-rc.1` 的离线运行时兼容检查；默认开发依赖保留 `0.2.1-rc.2`。
 
 ```bash
 npm ci
@@ -42,6 +42,17 @@ npm run check
 ```
 
 `check` 会先校验仓库中的 `dist/` 是否与源码一致，再运行类型检查和测试。修改源码后先执行 `npm run build` 并提交更新后的 `dist/`；CI 不会用测试期间的构建掩盖遗漏的产物。
+
+验证另一套已安装的 Harness SDK 时，可将其 `node_modules` 目录交给隔离检查器：
+
+```bash
+npm run build
+npm run check:runtime -- /absolute/path/to/harness-runtime/node_modules
+```
+
+检查器在临时目录运行同一套离线测试，不修改开发依赖或 Desktop 的实际会话。SDK 应包含原生和 PTC 工具执行器；Desktop 的服务端运行时未携带 React 时，仅 SSR 测试使用本仓库的 React。
+
+Harness `0.2.2-rc.1` 移除了 `tools.presentAs()`，并将工具列表移出 `system-prompt/assemble` 的可修改结果。`src/tool-executor.ts` 根据宿主能力选择旧接口或新版原生执行器，在当前预设/翻译助手作用域内限制工具；单角色 TTS 在新版使用逐步工具准入条件。兼容测试同时验证 native/PTC 宿主下的导演、工具执行限制、配音重试、翻译及配音开关。
 
 `npm test` 会先构建，再运行离线测试。真实付费 API 测试默认跳过，CI 不产生调用费用。配置好真实图像和兼容媒体端点后，可显式执行：
 

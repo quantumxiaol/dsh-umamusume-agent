@@ -2,7 +2,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools';
 import { startTtsJob } from './tts-jobs.js';
 export function registerTtsTool(ctx) {
     const fish = ctx.umamusume.settings.TTS_PROVIDER === 'fishspeech';
-    ctx.tools.register(defineTool({
+    const definition = defineTool({
         name: 'umamusume_speak',
         description: fish
             ? '创建后台配音任务：中文台词先翻译成日语，再用当前角色参考音频通过本机 FishSpeech 克隆音色。任务立即返回，用户可继续下一句。'
@@ -25,5 +25,9 @@ export function registerTtsTool(ctx) {
                 throw new Error('配音文本必须为 1–4000 字。');
             return startTtsJob(ctx, exec, { text, style: args.style });
         },
-    }));
+    });
+    // 0.2.2 admits tools per step; 0.2.1 ignores this optional argument and
+    // retains the preset's prompt filter. Execution always checks the toggle.
+    const options = { when: ({ agent }) => ctx.umamusume.capabilitiesFor(ctx.umamusume.characterForAgent(agent), agent).tts };
+    ctx.tools.register(definition, options);
 }

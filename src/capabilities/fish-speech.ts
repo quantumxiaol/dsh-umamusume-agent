@@ -5,6 +5,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import type { SessionId } from '@deepseek-ai/dsh-session';
 import type {} from '@deepseek-ai/dsh-tools';
+import { useNativeTools } from '../tool-executor.js';
 import type UmamusumeService from '../index.js';
 import type { CharacterCard } from '../characters/types.js';
 import { apiUrl, firstChoiceMessage, responseJson } from './http.js';
@@ -54,8 +55,8 @@ export async function translateToJapanese(ctx: Context, parent: Agent, text: str
     signal,
     agentOptions: { ...parent.options },
     meta: { cwd: parent.session.header.cwd },
-    setup(agentCtx) {
-      agentCtx.tools.presentAs('native');
+    async setup(agentCtx) {
+      await useNativeTools(agentCtx);
       agentCtx.tools.restrict({ allow: [] });
       agentCtx.systemPrompt.section({
         name: PERSONA_PREFIX_SECTION,

@@ -81,6 +81,8 @@
 
 本地路径方式可先复制 `.env.example` 为 `.env`，完成配置后再安装。安装或更新后，请完全重启 Desktop。
 
+兼容已验证的 Harness `0.2.1-rc.2` 和 `0.2.2-rc.1`。升级 Harness 后若旧插件提示 `ctx.tools.presentAs is not a function`，请更新本插件并完全重启 Desktop，再打开原会话即可，无需重新创建故事。
+
 ### 3. 配置语音和图像服务
 
 推荐在 `~/.dsh/.env` 中填写配置；自定义了 `DSH_HOME` 时，改为 `$DSH_HOME/.env`。也可以给 clone 的仓库根目录放置 `.env`，但 Desktop 的全局配置更稳定。

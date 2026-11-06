@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { PERSONA_PREFIX_SECTION } from '@deepseek-ai/dsh-system-prompt';
+import { useNativeTools } from '../tool-executor.js';
 import { apiUrl, firstChoiceMessage, responseJson } from './http.js';
 export async function synthesizeFishSpeech(service, character, input, context, onStage) {
     const language = service.settings.TTS_LANGUAGE;
@@ -51,8 +52,8 @@ export async function translateToJapanese(ctx, parent, text, signal) {
         signal,
         agentOptions: { ...parent.options },
         meta: { cwd: parent.session.header.cwd },
-        setup(agentCtx) {
-            agentCtx.tools.presentAs('native');
+        async setup(agentCtx) {
+            await useNativeTools(agentCtx);
             agentCtx.tools.restrict({ allow: [] });
             agentCtx.systemPrompt.section({
                 name: PERSONA_PREFIX_SECTION,

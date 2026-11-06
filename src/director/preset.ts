@@ -3,13 +3,14 @@ import type { Context } from '@deepseek-ai/cordis';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { directorPrompt } from './prompts.js';
 import { playScene } from './runtime.js';
+import { useNativeTools } from '../tool-executor.js';
 
 export const name = 'umamusume-director';
 export const inject = ['umamusume', 'systemPrompt', 'tools', 'attachments', 'sessions', 'sessionProjections', 'llm'];
 const PLAY_SCENE = 'umamusume_play_scene';
 const SCENE_DETAIL = { oneOf: [{ type: 'string' }, { type: 'object', additionalProperties: true }] } as const;
 
-export function apply(ctx: Context): void {
+export async function apply(ctx: Context): Promise<void> {
   ctx.systemPrompt.section({
     name: PERSONA_PREFIX_SECTION,
     order: ctx.systemPrompt.getSectionOrder('DEPLOYMENT_PERSONA_PREFIX'),
@@ -20,16 +21,11 @@ export function apply(ctx: Context): void {
     interpolate: false, complete: true,
   });
   ctx.systemPrompt.suppressRuntimeContext();
-  ctx.tools.presentAs('native');
+  await useNativeTools(ctx, [PLAY_SCENE]);
   // Preset tools are inherited by the live Agent. An empty allow-list on
   // the preset also hides its own tools when viewed from that child scope.
-  // Filter the model surface and guard execution without masking inheritance.
-  ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
-    const result = await next();
-    const tools = result.tools.filter(tool => tool.name === PLAY_SCENE);
-    if (tools.length !== 1) throw new Error('剧情工具未能加载，请重新加载剧情播放插件后再试。');
-    return { ...result, tools };
-  });
+  // The scoped executor filters the model surface; this guard also blocks
+  // execution of tools outside that surface without masking inheritance.
   ctx.tools.guard(exec => exec.name === PLAY_SCENE ? undefined : '剧情导演只能推进角色剧情。');
   ctx.tools.register(defineTool({
     name: PLAY_SCENE,

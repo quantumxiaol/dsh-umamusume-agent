@@ -35,7 +35,7 @@ export function apply(ctx: Context): void {
   ctx.on('system-prompt/assemble', async (assembly, context, next) => {
     const result = await next();
     const agent = agentOf(context);
-    if (agent && !service.sessionState(agent).ttsEnabled) {
+    if (agent && !service.sessionState(agent).ttsEnabled && Array.isArray(result.tools)) {
       result.tools = result.tools.filter(tool => tool.name !== 'umamusume_speak');
     }
     return result;
